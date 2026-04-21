@@ -292,7 +292,8 @@ const bgCanvas = document.getElementById('bg-canvas');
 // ONBOARDING → FORM TRANSITION
 // ============================================================
 
-applyBtn.addEventListener('click', startForm);
+const applyBtns = document.querySelectorAll('.apply-cta');
+applyBtns.forEach(btn => btn.addEventListener('click', startForm));
 
 function startForm() {
   onboardingEl.classList.add('exiting');
@@ -305,6 +306,7 @@ function startForm() {
     renderStep(currentStep, 'enter');
     updateProgress();
     updateBackBtn();
+    window.scrollTo(0, 0); // Ensure form starts at top
   }, 580);
 }
 
