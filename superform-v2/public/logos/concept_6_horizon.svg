@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <!-- Background linear mesh gradient -->
+    <linearGradient id="horizonBg" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#0D0D0D"/>
+      <stop offset="100%" stop-color="#211812"/>
+    </linearGradient>
+    <!-- Text split cream to orange gradient -->
+    <linearGradient id="textGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="30%" stop-color="#FAF8F4" />
+      <stop offset="100%" stop-color="#F59E0B" />
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="28" fill="url(#horizonBg)" stroke="#FAF8F4" stroke-width="2" stroke-opacity="0.08"/>
+  <text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-weight="900" font-size="52" fill="url(#textGrad)" letter-spacing="-0.04em">SF</text>
+</svg>

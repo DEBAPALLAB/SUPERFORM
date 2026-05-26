@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <defs>
+    <linearGradient id="sfGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="30%" stop-color="#FAF8F4" />
+      <stop offset="100%" stop-color="#F59E0B" />
+    </linearGradient>
+  </defs>
+  <rect width="32" height="32" rx="7" fill="#0D0D0D"/>
+  <text x="50%" y="56%" dominant-baseline="middle" text-anchor="middle" font-family="system-ui, -apple-system, BlinkMacSystemFont, sans-serif" font-weight="900" font-size="13" fill="url(#sfGrad)" letter-spacing="-0.03em">SF</text>
+</svg>

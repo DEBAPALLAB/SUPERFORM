@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" fill="none">
+  <!-- Precision architectural Form field brackets -->
+  <path d="M28 44V28H100V44" stroke="#0D0D0D" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M28 84V100H100V84" stroke="#0D0D0D" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Central solid focal core (data/intake balance) -->
+  <rect x="52" y="52" width="24" height="24" rx="7" fill="#0D0D0D"/>
+</svg>

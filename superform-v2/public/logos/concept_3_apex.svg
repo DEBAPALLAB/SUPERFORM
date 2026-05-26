@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" fill="none">
+  <!-- Minimalist abstract folded ribbon lettermark -->
+  <path d="M32 32H96V64H32V96H96" stroke="#0D0D0D" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Offset vertical stem creating the F connection -->
+  <path d="M64 48V80" stroke="#0D0D0D" stroke-width="14" stroke-linecap="round"/>
+</svg>
