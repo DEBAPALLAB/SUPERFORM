@@ -68,39 +68,54 @@ export default function Dashboard() {
   const handleCreateForm = async (customIntent?: string) => {
     if (!user) return;
     
-    setIsGenerating(true);
-    setGenStep(0);
+    const isBlank = customIntent === "Blank Form";
 
-    // Simulated Generation Sequence
-    for (let i = 0; i < genSteps.length; i++) {
-      setGenStep(i);
-      await new Promise(resolve => setTimeout(resolve, 800 + Math.random() * 400));
+    if (!isBlank) {
+      setIsGenerating(true);
+      setGenStep(0);
+
+      // Simulated Generation Sequence
+      for (let i = 0; i < genSteps.length; i++) {
+        setGenStep(i);
+        await new Promise(resolve => setTimeout(resolve, 800 + Math.random() * 400));
+      }
     }
     
     try {
-      // AI Generation Call
       let generatedData;
-      try {
-        const res = await fetch("/api/generate", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ intent: customIntent || intentValue })
-        });
-        
-        if (!res.ok) throw new Error("API responded with error");
-        generatedData = await res.json();
-      } catch (e) {
-        console.error("AI Generation failed, falling back to default", e);
+      if (isBlank) {
         generatedData = {
-          title: intentValue || "New Superform",
-          questions: [{ id: 1, type: "short", label: "What is your name?", placeholder: "Jane Doe", description: "", required: true, maxChars: 100, buttonText: "Continue" }],
-          aesthetic: "Editorial",
+          title: "Untitled Superform",
+          questions: [{ id: 1, type: "short", label: "Untitled Question", placeholder: "", description: "", required: false, maxChars: 100, buttonText: "Continue" }],
+          aesthetic: "Minimal",
           surface: "Flat",
           typography: "MD",
           radius: "SM"
         };
+      } else {
+        // AI Generation Call
+        try {
+          const res = await fetch("/api/generate", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ intent: customIntent || intentValue })
+          });
+          
+          if (!res.ok) throw new Error("API responded with error");
+          generatedData = await res.json();
+        } catch (e) {
+          console.error("AI Generation failed, falling back to default", e);
+          generatedData = {
+            title: intentValue || "New Superform",
+            questions: [{ id: 1, type: "short", label: "What is your name?", placeholder: "Jane Doe", description: "", required: true, maxChars: 100, buttonText: "Continue" }],
+            aesthetic: "Editorial",
+            surface: "Flat",
+            typography: "MD",
+            radius: "SM"
+          };
+        }
       }
 
       const { data, error } = await supabase
@@ -108,7 +123,7 @@ export default function Dashboard() {
         .insert([
           {
             user_id: user.id,
-            title: generatedData.title || intentValue || "New Superform",
+            title: generatedData.title || (isBlank ? "Untitled Superform" : intentValue) || "New Superform",
             questions: generatedData.questions,
             aesthetic: generatedData.aesthetic || "Editorial",
             surface: generatedData.surface || "Flat",
