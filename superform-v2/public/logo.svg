@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" fill="none">
+  <!-- Dynamic S-F continuous stroke flow -->
+  <path d="M40 32H88C96.8366 32 104 39.1634 104 48C104 56.8366 96.8366 64 88 64H40C31.1634 64 24 71.1634 24 80C24 88.8366 31.1634 96 40 96H88" stroke="currentColor" stroke-width="12" stroke-linecap="round"/>
+  <!-- The F crossbar intersecting cleanly at the Golden Ratio vertical -->
+  <path d="M64 42V72" stroke="currentColor" stroke-width="12" stroke-linecap="round"/>
+</svg>

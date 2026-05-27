@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect, use } from "react";
+import { useState, useEffect, use, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Clock, BarChart3, Users, CheckCircle, RefreshCw, X, ClipboardList, TrendingUp, Sparkles, PieChart, Star, Mail, ShieldAlert, Award, FileText, Download, Check, AlertCircle } from "lucide-react";
+import { ArrowLeft, Clock, BarChart3, Users, CheckCircle, RefreshCw, X, ClipboardList, TrendingUp, Sparkles, PieChart, Star, Mail, ShieldAlert, Award, FileText, Download, Check, AlertCircle, ChevronLeft, ChevronRight, ChevronDown } from "lucide-react";
 import Link from "next/link";
 import clsx from "clsx";
 
@@ -35,6 +35,69 @@ interface AnswerRow {
   value: string;
 }
 
+interface CustomSelectProps {
+  value: string | number;
+  onChange: (val: string) => void;
+  options: { value: string | number; label: string }[];
+  placeholder?: string;
+}
+
+function CustomSelect({ value, onChange, options, placeholder }: CustomSelectProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const selectedOpt = options.find(o => String(o.value) === String(value));
+
+  useEffect(() => {
+    const clickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", clickOutside);
+    return () => document.removeEventListener("mousedown", clickOutside);
+  }, []);
+
+  return (
+    <div className="relative w-full" ref={containerRef}>
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        type="button"
+        className="w-full bg-[#FAF8F5]/80 hover:bg-[#FAF8F5] border border-border/80 rounded-xl px-4 py-2.5 text-[10px] font-sans font-bold text-ink flex items-center justify-between gap-1.5 shadow-sm transition-all focus:border-ink/40 outline-none select-none cursor-pointer"
+      >
+        <span className="truncate flex-1 text-left">{selectedOpt ? selectedOpt.label : (placeholder || "Select...")}</span>
+        <ChevronDown className={clsx("w-3.5 h-3.5 text-muted shrink-0 transition-transform duration-300", isOpen && "rotate-180")} />
+      </button>
+
+      {isOpen && (
+        <div className="absolute left-0 right-0 top-full mt-1.5 z-[999] bg-white border border-border/80 rounded-2xl shadow-xl overflow-hidden flex flex-col p-1.5 gap-1 max-h-56 overflow-y-auto premium-scrollbar animate-in fade-in slide-in-from-top-1 duration-200">
+          {options.map((opt) => {
+            const active = String(opt.value) === String(value);
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => {
+                  onChange(String(opt.value));
+                  setIsOpen(false);
+                }}
+                className={clsx(
+                  "w-full text-left text-[10px] font-sans px-3 py-2 rounded-xl transition-all duration-200 cursor-pointer",
+                  active 
+                    ? "bg-ink text-canvas font-bold shadow-sm" 
+                    : "text-muted hover:text-ink hover:bg-[#FAF8F5] font-medium"
+                )}
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ResponseRoomPage({ params }: { params: Promise<{ formId: string }> }) {
   const { formId } = use(params);
   const router = useRouter();
@@ -45,8 +108,17 @@ export default function ResponseRoomPage({ params }: { params: Promise<{ formId:
   const [selectedResponse, setSelectedResponse] = useState<ResponseRow | null>(null);
   const [selectedAnswers, setSelectedAnswers] = useState<AnswerRow[]>([]);
   const [loadingAnswers, setLoadingAnswers] = useState(false);
-  const [activeTab, setActiveTab] = useState<"GROUP" | "INDIVIDUAL">("GROUP");
-  
+  const [activeTab, setActiveTab] = useState<"SUMMARY" | "QUESTION" | "INDIVIDUAL">("SUMMARY");
+  const [selectedQuestionId, setSelectedQuestionId] = useState<number | null>(null);
+  const [visModes, setVisModes] = useState<Record<number, string>>({});
+
+
+  useEffect(() => {
+    if (form?.questions?.[0]) {
+      setSelectedQuestionId(form.questions[0].id);
+    }
+  }, [form]);
+
   // Export states
   const [exportSuccess, setExportSuccess] = useState(false);
 
@@ -371,8 +443,411 @@ export default function ResponseRoomPage({ params }: { params: Promise<{ formId:
 
   const aiReport = getAISynthesisReport();
 
+  const renderQuestionAnalytics = (q: Question, idx: number) => {
+    const qId = q.id;
+
+    // RENDER MULTIPLE CHOICE DATA
+    if (q.type === "multiple") {
+      const { list, totalCount } = getMultipleChoiceStats(q);
+      const currentMode = visModes[qId] || "bar";
+      
+      return (
+        <div key={qId} className="bg-white border-2 border-[#0D0D0D]/10 p-6 rounded-3xl shadow-[0_15px_45px_rgba(13,13,13,0.02)] hover:shadow-[0_25px_60px_rgba(13,13,13,0.05)] hover:border-[#0D0D0D]/30 transition-all duration-500 w-full flex flex-col gap-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#0D0D0D]/5 pb-4">
+            <div className="flex flex-col gap-1">
+              <span className="font-mono text-[9px] text-[#888888] uppercase tracking-widest font-bold">
+                {String(idx + 1).padStart(2, "0")} • MULTIPLE CHOICE DATA
+              </span>
+              <h3 className="font-serif italic text-lg font-bold text-[#0D0D0D] mt-1">{q.label}</h3>
+            </div>
+            <div className="flex items-center gap-3 self-end sm:self-auto shrink-0">
+              <div className="flex bg-[#F5F3F0] p-0.5 rounded-xl border border-border/60">
+                {(["bar", "pie", "grid"] as const).map((m) => (
+                  <button
+                    key={m}
+                    onClick={() => setVisModes(prev => ({ ...prev, [qId]: m }))}
+                    className={clsx(
+                      "px-2.5 py-1 rounded-lg font-mono text-[8px] uppercase tracking-wider font-extrabold transition-all cursor-pointer",
+                      currentMode === m ? "bg-white text-ink shadow-sm" : "text-[#888888] hover:text-ink"
+                    )}
+                  >
+                    {m}
+                  </button>
+                ))}
+              </div>
+              <span className="font-mono text-[9px] text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-100 font-bold select-none shrink-0">
+                {totalCount} Answers
+              </span>
+            </div>
+          </div>
+
+          {currentMode === "bar" && (
+            <div className="space-y-4">
+              {list.map((item, oIdx) => (
+                <div key={oIdx} className="flex flex-col gap-2">
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="font-medium text-[#0D0D0D]">{item.option}</span>
+                    <span className="font-mono text-[10px] text-[#888888] font-bold">
+                      {item.count} ({item.percent}%)
+                    </span>
+                  </div>
+                  <div className="h-2.5 w-full bg-[#FAF8F4] border border-[#E5E5E5] rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-gradient-to-r from-amber-500 to-amber-600 rounded-full transition-all duration-700 shadow-[0_0_8px_rgba(245,158,11,0.2)]" 
+                      style={{ width: `${item.percent}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {currentMode === "pie" && (
+            <div className="flex flex-col gap-4">
+              <div className="h-6 w-full rounded-2xl overflow-hidden flex shadow-sm border border-[#E5E5E5]/60 bg-[#FAF8F4]">
+                {list.map((item, oIdx) => {
+                  const colors = [
+                    "bg-[#F59E0B]", "bg-[#10B981]", "bg-[#3B82F6]", 
+                    "bg-[#EF4444]", "bg-[#8B5CF6]", "bg-[#06B6D4]"
+                  ];
+                  const color = colors[oIdx % colors.length];
+                  if (item.percent === 0) return null;
+                  return (
+                    <div 
+                      key={oIdx} 
+                      className={clsx(color, "h-full transition-all duration-500 hover:opacity-90")}
+                      style={{ width: `${item.percent}%` }}
+                      title={`${item.option}: ${item.percent}%`}
+                    />
+                  );
+                })}
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+                {list.map((item, oIdx) => {
+                  const colors = [
+                    "bg-[#F59E0B]", "bg-[#10B981]", "bg-[#3B82F6]", 
+                    "bg-[#EF4444]", "bg-[#8B5CF6]", "bg-[#06B6D4]"
+                  ];
+                  const color = colors[oIdx % colors.length];
+                  return (
+                    <div key={oIdx} className="flex items-center gap-2 p-3 bg-[#FAF8F4] border border-[#E5E5E5]/50 rounded-2xl text-[10px] shadow-sm">
+                      <span className={clsx("w-2.5 h-2.5 rounded-full shrink-0 shadow-sm", color)} />
+                      <span className="truncate font-semibold text-[#0D0D0D] flex-grow">{item.option}</span>
+                      <span className="font-mono font-bold text-[#888888]">{item.percent}%</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {currentMode === "grid" && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {list.map((item, oIdx) => (
+                <div key={oIdx} className="p-4 bg-[#FAF8F4] border border-[#E5E5E5] rounded-3xl flex flex-col justify-between shadow-sm hover:border-[#0D0D0D]/20 transition-all duration-300">
+                  <div>
+                    <span className="text-[8px] font-mono text-[#888888] uppercase tracking-wider font-bold">Option {String(oIdx + 1).padStart(2, "0")}</span>
+                    <div className="text-xs font-bold text-[#0D0D0D] mt-1 truncate">{item.option}</div>
+                  </div>
+                  <div className="flex items-baseline gap-2 mt-4 pt-2 border-t border-[#E5E5E5]/40">
+                    <span className="text-3xl font-serif font-extrabold italic text-[#0D0D0D]">{item.percent}%</span>
+                    <span className="text-[10px] font-mono text-[#888888] font-semibold">({item.count} count)</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // RENDER YES / NO DATA
+    if (q.type === "yesno") {
+      const { yesCount, noCount, yesPercent, noPercent, totalCount } = getYesNoStats(q);
+      const currentMode = visModes[qId] || "split";
+      
+      return (
+        <div key={qId} className="bg-white border-2 border-[#0D0D0D]/10 p-6 rounded-3xl shadow-[0_15px_45px_rgba(13,13,13,0.02)] hover:shadow-[0_25px_60px_rgba(13,13,13,0.05)] hover:border-[#0D0D0D]/30 transition-all duration-500 w-full flex flex-col gap-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#0D0D0D]/5 pb-4">
+            <div className="flex flex-col gap-1">
+              <span className="font-mono text-[9px] text-[#888888] uppercase tracking-widest font-bold">
+                {String(idx + 1).padStart(2, "0")} • SPLIT METRIC
+              </span>
+              <h3 className="font-serif italic text-lg font-bold text-[#0D0D0D] mt-1">{q.label}</h3>
+            </div>
+            <div className="flex items-center gap-3 self-end sm:self-auto shrink-0">
+              <div className="flex bg-[#F5F3F0] p-0.5 rounded-xl border border-border/60">
+                {(["split", "cards", "ratio"] as const).map((m) => (
+                  <button
+                    key={m}
+                    onClick={() => setVisModes(prev => ({ ...prev, [qId]: m }))}
+                    className={clsx(
+                      "px-2.5 py-1 rounded-lg font-mono text-[8px] uppercase tracking-wider font-extrabold transition-all cursor-pointer",
+                      currentMode === m ? "bg-white text-ink shadow-sm" : "text-[#888888] hover:text-ink"
+                    )}
+                  >
+                    {m}
+                  </button>
+                ))}
+              </div>
+              <span className="font-mono text-[9px] text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-100 font-bold select-none shrink-0">
+                {totalCount} Answers
+              </span>
+            </div>
+          </div>
+
+          {currentMode === "split" && (
+            <div className="flex flex-col gap-4">
+              <div className="flex justify-between font-mono text-[10px] uppercase font-bold tracking-wider">
+                <span className="text-emerald-700">Yes • {yesCount} ({yesPercent}%)</span>
+                <span className="text-rose-700">No • {noCount} ({noPercent}%)</span>
+              </div>
+              <div className="h-3.5 w-full bg-rose-50 border border-rose-100 rounded-full overflow-hidden flex">
+                <div 
+                  className="h-full bg-emerald-500 transition-all duration-700 border-r-2 border-white/40" 
+                  style={{ width: `${yesPercent}%` }}
+                />
+                <div 
+                  className="h-full bg-rose-400 transition-all duration-700" 
+                  style={{ width: `${noPercent}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          {currentMode === "cards" && (
+            <div className="grid grid-cols-2 gap-4">
+              <div className="p-5 bg-[#FAF8F4] border-2 border-emerald-500/10 hover:border-emerald-500/30 rounded-3xl flex flex-col items-center text-center shadow-sm transition-all duration-300">
+                <span className="font-mono text-[8px] uppercase tracking-widest text-emerald-700 bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded-full font-bold">YES</span>
+                <span className="text-4xl font-serif font-extrabold italic text-emerald-600 my-3">{yesPercent}%</span>
+                <span className="text-[9px] font-mono text-[#888888] font-bold">{yesCount} Submissions</span>
+              </div>
+              <div className="p-5 bg-[#FAF8F4] border-2 border-rose-500/10 hover:border-rose-500/30 rounded-3xl flex flex-col items-center text-center shadow-sm transition-all duration-300">
+                <span className="font-mono text-[8px] uppercase tracking-widest text-rose-700 bg-rose-50 border border-rose-100 px-2 py-0.5 rounded-full font-bold">NO</span>
+                <span className="text-4xl font-serif font-extrabold italic text-rose-600 my-3">{noPercent}%</span>
+                <span className="text-[9px] font-mono text-[#888888] font-bold">{noCount} Submissions</span>
+              </div>
+            </div>
+          )}
+
+          {currentMode === "ratio" && (
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center justify-between p-4 bg-[#FAF8F4] border border-[#E5E5E5] rounded-2xl shadow-sm">
+                <span className="text-xs font-bold text-[#0D0D0D]">Yes Fraction</span>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs font-bold text-emerald-700">{yesPercent}%</span>
+                  <div className="w-32 h-2 bg-[#FAF8F4] border border-[#E5E5E5] rounded-full overflow-hidden">
+                    <div className="bg-emerald-500 h-full rounded-full" style={{ width: `${yesPercent}%` }} />
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center justify-between p-4 bg-[#FAF8F4] border border-[#E5E5E5] rounded-2xl shadow-sm">
+                <span className="text-xs font-bold text-[#0D0D0D]">No Fraction</span>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs font-bold text-rose-700">{noPercent}%</span>
+                  <div className="w-32 h-2 bg-[#FAF8F4] border border-[#E5E5E5] rounded-full overflow-hidden">
+                    <div className="bg-rose-500 h-full rounded-full" style={{ width: `${noPercent}%` }} />
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // RENDER RATINGS DATA
+    if (q.type === "rating") {
+      const { average, distribution, totalCount } = getRatingStats(q);
+      const currentMode = visModes[qId] || "dist";
+      
+      return (
+        <div key={qId} className="bg-white border-2 border-[#0D0D0D]/10 p-6 rounded-3xl shadow-[0_15px_45px_rgba(13,13,13,0.02)] hover:shadow-[0_25px_60px_rgba(13,13,13,0.05)] hover:border-[#0D0D0D]/30 transition-all duration-500 w-full flex flex-col gap-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#0D0D0D]/5 pb-4">
+            <div className="flex flex-col gap-1">
+              <span className="font-mono text-[9px] text-[#888888] uppercase tracking-widest font-bold">
+                {String(idx + 1).padStart(2, "0")} • QUALITATIVE RATING SCORE
+              </span>
+              <h3 className="font-serif italic text-lg font-bold text-[#0D0D0D] mt-1">{q.label}</h3>
+            </div>
+            <div className="flex items-center gap-3 self-end sm:self-auto shrink-0">
+              <div className="flex bg-[#F5F3F0] p-0.5 rounded-xl border border-border/60">
+                {(["dist", "gauge", "grid"] as const).map((m) => (
+                  <button
+                    key={m}
+                    onClick={() => setVisModes(prev => ({ ...prev, [qId]: m }))}
+                    className={clsx(
+                      "px-2.5 py-1 rounded-lg font-mono text-[8px] uppercase tracking-wider font-extrabold transition-all cursor-pointer",
+                      currentMode === m ? "bg-white text-ink shadow-sm" : "text-[#888888] hover:text-ink"
+                    )}
+                  >
+                    {m}
+                  </button>
+                ))}
+              </div>
+              <span className="font-mono text-[9px] text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-100 font-bold select-none shrink-0">
+                {totalCount} Answers
+              </span>
+            </div>
+          </div>
+
+          {currentMode === "dist" && (
+            <>
+              <div className="flex flex-col md:flex-row md:items-center gap-8 mb-4 border-b border-[#0D0D0D]/5 pb-6">
+                <div className="flex flex-col gap-1 items-center justify-center bg-[#FAF8F4] border border-[#E5E5E5] p-6 rounded-2xl shrink-0 w-36 shadow-sm">
+                  <span className="font-mono text-[8px] uppercase tracking-widest text-[#888888] font-bold">Average Score</span>
+                  <span className="font-serif italic text-4xl font-extrabold text-[#0D0D0D]">{average}</span>
+                  <span className="text-[9px] font-mono text-[#888888] uppercase font-semibold">Out of {q.maxRating || 5}</span>
+                </div>
+                
+                <div className="flex-grow flex flex-col justify-center">
+                  <p className="font-mono text-[8px] uppercase tracking-widest text-[#888888] font-bold">Weighted distribution of responses</p>
+                  <p className="text-xs text-[#888888] font-sans font-medium mt-1 leading-relaxed">Star distribution visualizes respondent sentiment clusters from positive feedback down to constructive suggestions.</p>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                {distribution.map((item) => (
+                  <div key={item.score} className="flex items-center gap-3">
+                    <span className="font-mono text-[9px] text-[#888888] w-12 font-bold select-none">{item.score} Stars</span>
+                    <div className="flex-grow h-2 bg-[#FAF8F4] border border-[#E5E5E5] rounded-full overflow-hidden">
+                      <div 
+                        className="h-full bg-[#0D0D0D] rounded-full transition-all duration-700" 
+                        style={{ width: `${item.percent}%` }}
+                      />
+                    </div>
+                    <span className="font-mono text-[9px] text-[#888888] w-10 text-right font-bold">{item.count}</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          {currentMode === "gauge" && (
+            <div className="flex flex-col items-center justify-center p-8 bg-[#FAF8F4] border border-[#E5E5E5] rounded-3xl shadow-inner">
+              <div className="relative w-36 h-36 flex items-center justify-center rounded-full bg-white shadow-md border-[6px] border-[#0D0D0D]/5">
+                {/* Visual dynamic outer ring segment */}
+                <div className="absolute inset-0 rounded-full border-[6px] border-[#0D0D0D]" style={{ clipPath: `polygon(50% 50%, -50% -50%, ${Math.min(100, Math.max(0, (Number(average) / (q.maxRating || 5)) * 100))}% 0%, 100% 100%)` }} />
+                <div className="text-center flex flex-col items-center z-10">
+                  <span className="text-4xl font-serif font-extrabold italic text-[#0D0D0D] leading-none mb-1">{average}</span>
+                  <span className="text-[8px] font-mono text-[#888888] uppercase tracking-wider font-extrabold">AVG RATING</span>
+                </div>
+              </div>
+              <p className="text-[9px] font-mono text-[#888888] uppercase font-bold tracking-widest mt-5">
+                Scale: 1.0 to {q.maxRating || 5}.0 Stars • {totalCount} reviews registered
+              </p>
+            </div>
+          )}
+
+          {currentMode === "grid" && (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+              {distribution.map((item) => (
+                <div key={item.score} className="p-4 bg-[#FAF8F4] border border-[#E5E5E5] rounded-2xl flex flex-col items-center justify-center shadow-sm hover:border-[#0D0D0D]/20 transition-colors">
+                  <div className="flex items-center gap-1">
+                    <span className="text-lg font-serif font-extrabold italic text-[#0D0D0D]">{item.score}</span>
+                    <Star className="w-3.5 h-3.5 fill-[#0D0D0D] text-[#0D0D0D] shrink-0" />
+                  </div>
+                  <span className="text-[9px] font-mono text-[#888888] font-bold mt-2">{item.percent}%</span>
+                  <span className="text-[8px] font-mono text-[#888888]/60 font-semibold">({item.count} count)</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // RENDER OPEN-TEXT DATA (SHORT, LONG, CONTACT DETAILS)
+    const { filledCount, keywords, recent } = getTextStats(q);
+    const currentMode = visModes[qId] || "cloud";
+    
+    return (
+      <div key={qId} className="bg-white border-2 border-[#0D0D0D]/10 p-6 rounded-3xl shadow-[0_15px_45px_rgba(13,13,13,0.02)] hover:shadow-[0_25px_60px_rgba(13,13,13,0.05)] hover:border-[#0D0D0D]/30 transition-all duration-500 w-full flex flex-col gap-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#0D0D0D]/5 pb-4">
+          <div className="flex flex-col gap-1">
+            <span className="font-mono text-[9px] text-[#888888] uppercase tracking-widest font-bold">
+              {String(idx + 1).padStart(2, "0")} • QUALITATIVE FEEDBACK SUBSET
+            </span>
+            <h3 className="font-serif italic text-lg font-bold text-[#0D0D0D] mt-1">{q.label}</h3>
+          </div>
+          <div className="flex items-center gap-3 self-end sm:self-auto shrink-0">
+            <div className="flex bg-[#F5F3F0] p-0.5 rounded-xl border border-border/60">
+              {(["cloud", "feed", "stats"] as const).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => setVisModes(prev => ({ ...prev, [qId]: m }))}
+                  className={clsx(
+                    "px-2.5 py-1 rounded-lg font-mono text-[8px] uppercase tracking-wider font-extrabold transition-all cursor-pointer",
+                    currentMode === m ? "bg-white text-ink shadow-sm" : "text-[#888888] hover:text-ink"
+                  )}
+                >
+                  {m === "cloud" ? "cloud" : m === "feed" ? "feed" : "stats"}
+                </button>
+              ))}
+            </div>
+            <span className="font-mono text-[9px] text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-100 font-bold select-none shrink-0">
+              {filledCount} Entries
+            </span>
+          </div>
+        </div>
+
+        {currentMode === "cloud" && (
+          <div>
+            {keywords.length > 0 ? (
+              <div className="flex flex-col gap-3">
+                <span className="font-mono text-[8px] uppercase tracking-widest text-[#888888] font-bold block">Dominant Term Clusters (Word Cloud)</span>
+                <div className="flex flex-wrap gap-2 py-2">
+                  {keywords.map((kw, kwIdx) => (
+                    <span 
+                      key={kwIdx}
+                      className="px-3 py-1.5 bg-[#FAF8F4] border border-[#E5E5E5] hover:border-black rounded-full font-mono text-[9px] text-[#0D0D0D] transition-colors flex items-center gap-1 shadow-sm font-semibold select-none cursor-default"
+                    >
+                      {kw.word} <span className="text-[8px] opacity-40">({kw.count})</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-6 font-mono text-[9px] uppercase text-[#888888]">No recurrent terms clusters computed yet.</div>
+            )}
+          </div>
+        )}
+
+        {currentMode === "feed" && (
+          <div className="flex flex-col gap-2.5 max-h-60 overflow-y-auto premium-scrollbar pr-1">
+            {recent.map((item, rIdx) => (
+              <div key={rIdx} className="p-4 bg-[#FAF8F4] border border-[#E5E5E5] rounded-2xl text-xs leading-relaxed text-[#0D0D0D] font-medium font-sans shadow-sm hover:border-[#0D0D0D]/10 transition-colors">
+                "{item.value}"
+              </div>
+            ))}
+            {recent.length === 0 && (
+              <div className="text-center py-4 font-mono text-[9px] uppercase text-[#888888]">No text answers recorded.</div>
+            )}
+          </div>
+        )}
+
+        {currentMode === "stats" && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="p-5 bg-[#FAF8F4] border border-[#E5E5E5] rounded-3xl shadow-sm">
+              <span className="font-mono text-[8px] uppercase tracking-widest text-[#888888] font-bold block">Filled Entries</span>
+              <span className="text-3xl font-serif font-extrabold italic text-ink block mt-1.5">{filledCount}</span>
+              <span className="text-[8px] font-mono text-[#888888] font-semibold block mt-1">out of {responses.length} total form submittals</span>
+            </div>
+            <div className="p-5 bg-[#FAF8F4] border border-[#E5E5E5] rounded-3xl shadow-sm">
+              <span className="font-mono text-[8px] uppercase tracking-widest text-[#888888] font-bold block">Fulfillment Density</span>
+              <span className="text-3xl font-serif font-extrabold italic text-emerald-600 block mt-1.5">
+                {responses.length > 0 ? Math.round((filledCount / responses.length) * 100) : 0}%
+              </span>
+              <span className="text-[8px] font-mono text-[#888888] font-semibold block mt-1">active response rate ratio</span>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
-    <div className="min-h-screen bg-[#FAF8F4] text-[#0D0D0D] flex flex-col font-sans relative overflow-hidden">
+    <div className="min-h-screen bg-[#FAF8F4] text-[#0D0D0D] flex flex-col font-sans relative">
       {/* Decorative background grid and organic color blobs */}
       <div className="absolute inset-0 pointer-events-none z-0">
         <div className="absolute top-[-10%] right-[-10%] w-[60%] h-[50%] bg-amber-500/[0.015] rounded-full blur-[140px]" />
@@ -381,7 +856,7 @@ export default function ResponseRoomPage({ params }: { params: Promise<{ formId:
       </div>
 
       {/* HEADER */}
-      <header className="h-[64px] border-b border-[#E5E5E5] bg-[#FAF8F4]/80 backdrop-blur-xl flex items-center justify-between px-6 shrink-0 z-10">
+      <header className="sticky top-0 h-[64px] border-b border-[#E5E5E5] bg-[#FAF8F4]/80 backdrop-blur-xl flex items-center justify-between px-6 shrink-0 z-50 shadow-sm">
         <div className="flex items-center gap-4">
           <Link href="/dashboard" className="p-2 hover:bg-[#FAF8F4] border border-[#0D0D0D]/5 rounded-full transition-colors bg-white shadow-sm hover:shadow-md">
             <ArrowLeft className="w-4 h-4" />
@@ -421,18 +896,18 @@ export default function ResponseRoomPage({ params }: { params: Promise<{ formId:
 
       {/* CORE WORKSPACE CONTENT */}
       {loading ? (
-        <div className="flex-grow flex items-center justify-center relative z-10">
+        <div className="flex-grow flex items-center justify-center relative z-10 py-24">
           <div className="w-32 h-0.5 bg-[#E5E5E5] overflow-hidden relative">
             <div className="absolute inset-y-0 left-0 bg-[#0D0D0D] w-full animate-[slide-rule_1s_ease-in-out_infinite]" />
           </div>
           <style>{`@keyframes slide-rule{0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}`}</style>
         </div>
       ) : (
-        <div className="flex-grow flex flex-col p-6 lg:p-8 gap-8 overflow-y-auto relative z-10" data-lenis-prevent="true">
+        <div className="flex-grow flex flex-col p-6 lg:p-8 gap-8 relative z-10">
           
           {/* STATS OVERVIEW CARDS */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-7xl w-full mx-auto shrink-0">
-            <div className="p-6 bg-white border border-[#E5E5E5] rounded-3xl shadow-[0_8px_30px_rgba(0,0,0,0.01)] hover:shadow-[0_12px_45px_rgba(0,0,0,0.02)] transition-all flex flex-col justify-between h-[130px] group">
+            <div className="p-6 bg-white border-2 border-[#0D0D0D]/10 rounded-3xl shadow-[0_12px_36px_rgba(13,13,13,0.015)] hover:shadow-[0_20px_50px_rgba(13,13,13,0.04)] hover:-translate-y-0.5 transition-all duration-500 flex flex-col justify-between h-[130px] group">
               <div className="flex items-center justify-between">
                 <span className="font-mono text-[8px] uppercase tracking-widest text-[#888888] font-bold">Total Form Submissions</span>
                 <Users className="w-4 h-4 text-[#888888] group-hover:text-black transition-colors" />
@@ -441,7 +916,7 @@ export default function ResponseRoomPage({ params }: { params: Promise<{ formId:
               <div className="text-[8px] font-mono text-[#888888] uppercase tracking-wider font-semibold">Live responses recorded</div>
             </div>
 
-            <div className="p-6 bg-white border border-[#E5E5E5] rounded-3xl shadow-[0_8px_30px_rgba(0,0,0,0.01)] hover:shadow-[0_12px_45px_rgba(0,0,0,0.02)] transition-all flex flex-col justify-between h-[130px] group">
+            <div className="p-6 bg-white border-2 border-[#0D0D0D]/10 rounded-3xl shadow-[0_12px_36px_rgba(13,13,13,0.015)] hover:shadow-[0_20px_50px_rgba(13,13,13,0.04)] hover:-translate-y-0.5 transition-all duration-500 flex flex-col justify-between h-[130px] group">
               <div className="flex items-center justify-between">
                 <span className="font-mono text-[8px] uppercase tracking-widest text-[#888888] font-bold">Aesthetic Framework</span>
                 <Sparkles className="w-4 h-4 text-[#888888] group-hover:text-amber-600 transition-colors" />
@@ -452,7 +927,7 @@ export default function ResponseRoomPage({ params }: { params: Promise<{ formId:
               <div className="text-[8px] font-mono text-[#888888] uppercase tracking-wider font-semibold">Tailored design system active</div>
             </div>
 
-            <div className="p-6 bg-white border border-[#E5E5E5] rounded-3xl shadow-[0_8px_30px_rgba(0,0,0,0.01)] hover:shadow-[0_12px_45px_rgba(0,0,0,0.02)] transition-all flex flex-col justify-between h-[130px] group">
+            <div className="p-6 bg-white border-2 border-[#0D0D0D]/10 rounded-3xl shadow-[0_12px_36px_rgba(13,13,13,0.015)] hover:shadow-[0_20px_50px_rgba(13,13,13,0.04)] hover:-translate-y-0.5 transition-all duration-500 flex flex-col justify-between h-[130px] group">
               <div className="flex items-center justify-between">
                 <span className="font-mono text-[8px] uppercase tracking-widest text-[#888888] font-bold">Active Submissions Gate</span>
                 <Award className="w-4 h-4 text-[#888888] group-hover:text-emerald-600 transition-colors" />
@@ -468,15 +943,26 @@ export default function ResponseRoomPage({ params }: { params: Promise<{ formId:
           <div className="w-full max-w-7xl mx-auto flex justify-center shrink-0">
             <div className="flex bg-[#F5F3F0]/90 backdrop-blur-md p-1 rounded-full border border-border/80 shadow-[inset_0_1px_3px_rgba(0,0,0,0.02)] gap-0.5">
               <button 
-                onClick={() => setActiveTab("GROUP")}
+                onClick={() => setActiveTab("SUMMARY")}
                 className={clsx(
                   "px-6 py-2 rounded-full font-mono text-[9px] uppercase tracking-widest transition-all duration-300 font-bold hover:scale-[1.02] active:scale-[0.98] flex items-center gap-1.5 cursor-pointer",
-                  activeTab === "GROUP" 
+                  activeTab === "SUMMARY" 
                     ? "bg-ink text-canvas shadow-[0_2px_8px_rgba(13,13,13,0.15)] font-extrabold" 
                     : "text-[#888888] hover:text-ink hover:bg-white/40"
                 )}
               >
-                <PieChart className="w-3.5 h-3.5" /> Group Metrics & AI Insights
+                <PieChart className="w-3.5 h-3.5" /> Summary
+              </button>
+              <button 
+                onClick={() => setActiveTab("QUESTION")}
+                className={clsx(
+                  "px-6 py-2 rounded-full font-mono text-[9px] uppercase tracking-widest transition-all duration-300 font-bold hover:scale-[1.02] active:scale-[0.98] flex items-center gap-1.5 cursor-pointer",
+                  activeTab === "QUESTION" 
+                    ? "bg-ink text-canvas shadow-[0_2px_8px_rgba(13,13,13,0.15)] font-extrabold" 
+                    : "text-[#888888] hover:text-ink hover:bg-white/40"
+                )}
+              >
+                <FileText className="w-3.5 h-3.5" /> Question
               </button>
               <button 
                 onClick={() => setActiveTab("INDIVIDUAL")}
@@ -487,18 +973,18 @@ export default function ResponseRoomPage({ params }: { params: Promise<{ formId:
                     : "text-[#888888] hover:text-ink hover:bg-white/40"
                 )}
               >
-                <ClipboardList className="w-3.5 h-3.5" /> Submissions Log & Inspector
+                <ClipboardList className="w-3.5 h-3.5" /> Individual
               </button>
             </div>
           </div>
 
           {/* TAB CONTENT */}
           <div className="w-full max-w-7xl mx-auto flex-grow flex flex-col min-h-[500px]">
-            {activeTab === "GROUP" ? (
+            {activeTab === "SUMMARY" ? (
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start w-full">
                 
                 {/* LEFT 2 COLUMNS: DENSE AGGREGATED METRICS PER QUESTION */}
-                <div className="lg:col-span-2 flex flex-col gap-6">
+                <div className="lg:col-span-2 flex flex-col gap-6 w-full">
                   <div className="flex flex-col gap-1 border-b border-[#0D0D0D]/5 pb-3">
                     <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-[#888888] font-bold">Quantitative & Qualitative breakdown</span>
                     <h2 className="font-serif italic text-2xl font-bold">Form Submission Datasets</h2>
@@ -512,180 +998,12 @@ export default function ResponseRoomPage({ params }: { params: Promise<{ formId:
                       </p>
                     </div>
                   ) : (
-                    form?.questions?.map((q, idx) => {
-                      const qId = q.id;
-
-                      // RENDER MULTIPLE CHOICE DATA
-                      if (q.type === "multiple") {
-                        const { list, totalCount } = getMultipleChoiceStats(q);
-                        return (
-                          <div key={qId} className="bg-white border border-[#E5E5E5] p-6 rounded-3xl shadow-[0_8px_30px_rgba(0,0,0,0.005)]">
-                            <div className="flex justify-between items-start mb-6">
-                              <span className="font-mono text-[9px] text-[#888888] uppercase tracking-widest font-bold">
-                                {String(idx + 1).padStart(2, "0")} • MULTIPLE CHOICE DATA
-                              </span>
-                              <span className="font-mono text-[9px] text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-100 font-bold">
-                                {totalCount} Answers
-                              </span>
-                            </div>
-                            <h3 className="font-serif italic text-lg font-bold mb-6 text-[#0D0D0D]">{q.label}</h3>
-                            
-                            <div className="space-y-4">
-                              {list.map((item, oIdx) => (
-                                <div key={oIdx} className="flex flex-col gap-2">
-                                  <div className="flex justify-between items-center text-xs">
-                                    <span className="font-medium text-[#0D0D0D]">{item.option}</span>
-                                    <span className="font-mono text-[10px] text-[#888888] font-bold">
-                                      {item.count} ({item.percent}%)
-                                    </span>
-                                  </div>
-                                  <div className="h-2.5 w-full bg-[#FAF8F4] border border-[#E5E5E5] rounded-full overflow-hidden">
-                                    <div 
-                                      className="h-full bg-gradient-to-r from-amber-500 to-amber-600 rounded-full transition-all duration-700 shadow-[0_0_8px_rgba(245,158,11,0.2)]" 
-                                      style={{ width: `${item.percent}%` }}
-                                    />
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        );
-                      }
-
-                      // RENDER YES / NO DATA
-                      if (q.type === "yesno") {
-                        const { yesCount, noCount, yesPercent, noPercent, totalCount } = getYesNoStats(q);
-                        return (
-                          <div key={qId} className="bg-white border border-[#E5E5E5] p-6 rounded-3xl shadow-[0_8px_30px_rgba(0,0,0,0.005)]">
-                            <div className="flex justify-between items-start mb-6">
-                              <span className="font-mono text-[9px] text-[#888888] uppercase tracking-widest font-bold">
-                                {String(idx + 1).padStart(2, "0")} • SPLIT METRIC
-                              </span>
-                              <span className="font-mono text-[9px] text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-100 font-bold">
-                                {totalCount} Answers
-                              </span>
-                            </div>
-                            <h3 className="font-serif italic text-lg font-bold mb-6 text-[#0D0D0D]">{q.label}</h3>
-
-                            <div className="flex flex-col gap-4">
-                              <div className="flex justify-between font-mono text-[10px] uppercase font-bold tracking-wider">
-                                <span className="text-emerald-700">Yes • {yesCount} ({yesPercent}%)</span>
-                                <span className="text-rose-700">No • {noCount} ({noPercent}%)</span>
-                              </div>
-                              <div className="h-3 w-full bg-rose-50 border border-rose-100 rounded-full overflow-hidden flex">
-                                <div 
-                                  className="h-full bg-emerald-500 transition-all duration-700 border-r border-white/20" 
-                                  style={{ width: `${yesPercent}%` }}
-                                />
-                                <div 
-                                  className="h-full bg-rose-400 transition-all duration-700" 
-                                  style={{ width: `${noPercent}%` }}
-                                />
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      }
-
-                      // RENDER RATINGS DATA
-                      if (q.type === "rating") {
-                        const { average, distribution, totalCount } = getRatingStats(q);
-                        return (
-                          <div key={qId} className="bg-white border border-[#E5E5E5] p-6 rounded-3xl shadow-[0_8px_30px_rgba(0,0,0,0.005)]">
-                            <div className="flex justify-between items-start mb-6">
-                              <span className="font-mono text-[9px] text-[#888888] uppercase tracking-widest font-bold">
-                                {String(idx + 1).padStart(2, "0")} • QUALITATIVE RATING SCORE
-                              </span>
-                              <span className="font-mono text-[9px] text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-100 font-bold">
-                                {totalCount} Answers
-                              </span>
-                            </div>
-                            
-                            <div className="flex flex-col md:flex-row md:items-center gap-8 mb-6 border-b border-[#0D0D0D]/5 pb-6">
-                              <div className="flex flex-col gap-1 items-center justify-center bg-[#FAF8F4] border border-[#E5E5E5] p-6 rounded-2xl shrink-0 w-36">
-                                <span className="font-mono text-[8px] uppercase tracking-widest text-[#888888] font-bold">Average Score</span>
-                                <span className="font-serif italic text-4xl font-extrabold text-[#0D0D0D]">{average}</span>
-                                <span className="text-[9px] font-mono text-[#888888] uppercase font-semibold">Out of {q.maxRating || 5}</span>
-                              </div>
-                              
-                              <div className="flex-grow flex flex-col justify-center">
-                                <h3 className="font-serif italic text-lg font-bold mb-2 text-[#0D0D0D]">{q.label}</h3>
-                                <p className="font-mono text-[8px] uppercase tracking-widest text-[#888888] font-bold">Weighted distribution of responses</p>
-                              </div>
-                            </div>
-
-                            <div className="space-y-3">
-                              {distribution.map((item) => (
-                                <div key={item.score} className="flex items-center gap-3">
-                                  <span className="font-mono text-[9px] text-[#888888] w-12 font-bold select-none">{item.score} Stars</span>
-                                  <div className="flex-grow h-2 bg-[#FAF8F4] border border-[#E5E5E5] rounded-full overflow-hidden">
-                                    <div 
-                                      className="h-full bg-[#0D0D0D] rounded-full transition-all duration-700" 
-                                      style={{ width: `${item.percent}%` }}
-                                    />
-                                  </div>
-                                  <span className="font-mono text-[9px] text-[#888888] w-10 text-right font-bold">{item.count}</span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        );
-                      }
-
-                      // RENDER OPEN-TEXT DATA (SHORT, LONG, CONTACT DETAILS)
-                      const { filledCount, keywords, recent } = getTextStats(q);
-                      return (
-                        <div key={qId} className="bg-white border border-[#E5E5E5] p-6 rounded-3xl shadow-[0_8px_30px_rgba(0,0,0,0.005)]">
-                          <div className="flex justify-between items-start mb-6">
-                            <span className="font-mono text-[9px] text-[#888888] uppercase tracking-widest font-bold">
-                              {String(idx + 1).padStart(2, "0")} • QUALITATIVE FEEDBACK SUBSET
-                            </span>
-                            <span className="font-mono text-[9px] text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-100 font-bold">
-                              {filledCount} Entries
-                            </span>
-                          </div>
-                          
-                          <h3 className="font-serif italic text-lg font-bold mb-4 text-[#0D0D0D]">{q.label}</h3>
-
-                          {/* Term Cloud / Keywords */}
-                          {keywords.length > 0 && (
-                            <div className="mb-6 border-b border-[#0D0D0D]/5 pb-5">
-                              <span className="font-mono text-[8px] uppercase tracking-widest text-[#888888] font-bold block mb-3">Dominant Term Clustures (Word Cloud)</span>
-                              <div className="flex flex-wrap gap-2">
-                                {keywords.map((kw, kwIdx) => (
-                                  <span 
-                                    key={kwIdx}
-                                    className="px-2.5 py-1 bg-[#FAF8F4] border border-[#E5E5E5] hover:border-black rounded-full font-mono text-[9px] text-[#0D0D0D] transition-colors flex items-center gap-1 shadow-sm font-semibold select-none"
-                                  >
-                                    {kw.word} <span className="text-[8px] opacity-40">({kw.count})</span>
-                                  </span>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Recent Submissions Snippet */}
-                          <div>
-                            <span className="font-mono text-[8px] uppercase tracking-widest text-[#888888] font-bold block mb-3">Recent Direct Feedback Entries</span>
-                            <div className="flex flex-col gap-2">
-                              {recent.map((item, rIdx) => (
-                                <div key={rIdx} className="p-3 bg-[#FAF8F4] border border-[#E5E5E5] rounded-xl text-xs leading-relaxed text-[#0D0D0D] font-medium font-sans">
-                                  "{item.value}"
-                                </div>
-                              ))}
-                              {recent.length === 0 && (
-                                <div className="text-center py-4 font-mono text-[9px] uppercase text-[#888888]">No text answers recorded.</div>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })
+                    form?.questions?.map((q, idx) => renderQuestionAnalytics(q, idx))
                   )}
                 </div>
 
                 {/* RIGHT COLUMN: AI SYNTHESIS & PRESET PREDICTIVE ANALYSIS */}
-                <div className="flex flex-col gap-6 lg:sticky lg:top-8 shrink-0">
+                <div className="flex flex-col gap-6 lg:sticky lg:top-[88px] shrink-0 lg:max-w-md w-full">
                   <div className="flex flex-col gap-1 border-b border-[#0D0D0D]/5 pb-3">
                     <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-[#888888] font-bold">Predictive synthesis report</span>
                     <h2 className="font-serif italic text-2xl font-bold">AI Analytical Engine</h2>
@@ -756,11 +1074,97 @@ export default function ResponseRoomPage({ params }: { params: Promise<{ formId:
                   )}
                 </div>
               </div>
+            ) : activeTab === "QUESTION" ? (
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start w-full">
+                {/* LEFT SIDEBAR: SELECT QUESTION NAVIGATION */}
+                <div className="flex flex-col gap-6 lg:sticky lg:top-[88px] shrink-0 w-full">
+                  <div className="flex flex-col gap-1 border-b border-[#0D0D0D]/5 pb-3">
+                    <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-[#888888] font-bold">Question Navigator</span>
+                    <h2 className="font-serif italic text-2xl font-bold">Select Question</h2>
+                  </div>
+
+                  {form && form.questions && form.questions.length > 0 ? (
+                    <div className="bg-white border-2 border-[#0D0D0D]/10 p-6 rounded-3xl shadow-[0_12px_36px_rgba(13,13,13,0.015)] flex flex-col gap-6">
+                      <div className="flex flex-col gap-2">
+                        <span className="font-mono text-[8px] uppercase tracking-widest text-[#888888] font-bold">Choose a question</span>
+                        <CustomSelect
+                          value={selectedQuestionId || ""}
+                          onChange={(val) => setSelectedQuestionId(Number(val))}
+                          options={form.questions.map((q, idx) => ({
+                            value: q.id,
+                            label: `${idx + 1}. ${q.label}`
+                          }))}
+                        />
+                      </div>
+
+                      {/* Paginated next/prev buttons */}
+                      <div className="flex items-center justify-between border-t border-[#E5E5E5] pt-4 mt-2">
+                        <span className="font-mono text-[9px] text-[#888888] font-bold">
+                          {(() => {
+                            const idx = form.questions.findIndex(q => q.id === selectedQuestionId);
+                            return `${idx + 1} of ${form.questions.length}`;
+                          })()}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => {
+                              const idx = form.questions.findIndex(q => q.id === selectedQuestionId);
+                              if (idx > 0) {
+                                setSelectedQuestionId(form.questions[idx - 1].id);
+                              }
+                            }}
+                            disabled={form.questions.findIndex(q => q.id === selectedQuestionId) === 0}
+                            className="p-2 bg-white border border-[#E5E5E5] rounded-full hover:border-[#0D0D0D] transition-colors disabled:opacity-40 disabled:hover:border-[#E5E5E5] cursor-pointer"
+                          >
+                            <ChevronLeft className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              const idx = form.questions.findIndex(q => q.id === selectedQuestionId);
+                              if (idx < form.questions.length - 1) {
+                                setSelectedQuestionId(form.questions[idx + 1].id);
+                              }
+                            }}
+                            disabled={form.questions.findIndex(q => q.id === selectedQuestionId) === form.questions.length - 1}
+                            className="p-2 bg-white border border-[#E5E5E5] rounded-full hover:border-[#0D0D0D] transition-colors disabled:opacity-40 disabled:hover:border-[#E5E5E5] cursor-pointer"
+                          >
+                            <ChevronRight className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="border border-dashed border-[#E5E5E5] rounded-3xl p-6 text-center text-[#888888] bg-white">
+                      No questions found.
+                    </div>
+                  )}
+                </div>
+
+                {/* RIGHT COLUMN: INDIVIDUAL QUESTION CHART/ANALYTICS CARD */}
+                <div className="lg:col-span-2 flex flex-col gap-6 w-full">
+                  <div className="flex flex-col gap-1 border-b border-[#0D0D0D]/5 pb-3">
+                    <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-[#888888] font-bold">Targeted question analysis</span>
+                    <h2 className="font-serif italic text-2xl font-bold">Metrics Visualizer</h2>
+                  </div>
+
+                  {(() => {
+                    if (!form || !form.questions) return null;
+                    const selectedIdx = form.questions.findIndex(q => q.id === selectedQuestionId);
+                    const selectedQ = form.questions[selectedIdx];
+                    if (!selectedQ) return (
+                      <div className="border border-dashed border-[#E5E5E5] rounded-3xl p-12 text-center text-[#888888] bg-white font-mono text-xs">
+                        Select a question from the navigator to view metrics.
+                      </div>
+                    );
+                    return renderQuestionAnalytics(selectedQ, selectedIdx);
+                  })()}
+                </div>
+              </div>
             ) : (
               <div className="flex flex-col lg:flex-row gap-8 items-start w-full">
                 
                 {/* SUBMISSIONS TABLE */}
-                <div className="flex-grow bg-white border border-[#E5E5E5] rounded-3xl shadow-[0_8px_30px_rgba(0,0,0,0.015)] overflow-hidden flex flex-col w-full">
+                <div className="flex-grow bg-white border-2 border-[#0D0D0D]/10 rounded-3xl shadow-[0_15px_45px_rgba(13,13,13,0.02)] overflow-hidden flex flex-col w-full">
                   <div className="p-5 border-b border-[#E5E5E5] flex justify-between items-center">
                     <span className="font-mono text-[9px] uppercase tracking-widest text-[#888888] font-bold">Submissions Log Table</span>
                     <span className="text-[9px] font-mono text-[#888888] font-bold bg-[#FAF8F4] border border-[#0D0D0D]/5 px-2 py-0.5 rounded">{responses.length} record(s)</span>
@@ -840,9 +1244,9 @@ export default function ResponseRoomPage({ params }: { params: Promise<{ formId:
                 </div>
 
                 {/* RIGHT SIDEBAR (INDIVIDUAL ANSWERS DETAILS) */}
-                <div className="w-full lg:w-[380px] shrink-0 lg:sticky lg:top-8">
+                <div className="w-full lg:w-[380px] shrink-0 lg:sticky lg:top-[88px]">
                   {selectedResponse ? (
-                    <div className="bg-white border border-[#E5E5E5] rounded-3xl shadow-xl p-6 flex flex-col gap-6 relative max-h-[700px] overflow-y-auto premium-scrollbar">
+                    <div className="bg-white border-2 border-[#0D0D0D]/10 rounded-3xl shadow-2xl p-6 flex flex-col gap-6 relative max-h-[640px] overflow-y-auto premium-scrollbar">
                       <button 
                         onClick={() => setSelectedResponse(null)}
                         className="absolute top-4 right-4 p-1.5 hover:bg-[#FAF8F4] rounded-full text-[#888888] hover:text-black border border-transparent hover:border-border transition-colors"
@@ -917,3 +1321,4 @@ export default function ResponseRoomPage({ params }: { params: Promise<{ formId:
     </div>
   );
 }
+

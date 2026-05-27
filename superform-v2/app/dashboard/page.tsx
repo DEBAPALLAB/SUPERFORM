@@ -280,8 +280,17 @@ export default function Dashboard() {
 
       {/* HEADER */}
       <header className="sticky top-0 z-50 h-[56px] border-b border-[#0D0D0D]/5 bg-[#FAF8F4]/60 backdrop-blur-xl flex items-center justify-between px-6 shadow-sm">
-        <Link href="/dashboard" className="font-display text-2xl tracking-wide flex items-center gap-2 hover:opacity-80 transition-opacity">
-          <span className="bg-[#0D0D0D] text-[#FAF8F4] px-1.5 py-0.5 text-sm leading-none rounded-sm">SF</span>
+        <Link href="/dashboard" className="font-display text-2xl tracking-wide flex items-center gap-2 hover:opacity-80 transition-opacity text-[#0D0D0D]">
+          <svg className="w-7 h-7 rounded-[7px] shrink-0 shadow-sm" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="dashboardSfGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="30%" stopColor="#FAF8F4" />
+                <stop offset="100%" stopColor="#F59E0B" />
+              </linearGradient>
+            </defs>
+            <rect width="32" height="32" rx="7" fill="#0D0D0D"/>
+            <text x="50%" y="55%" dominantBaseline="middle" textAnchor="middle" fontFamily="system-ui, -apple-system, sans-serif" fontWeight="900" fontSize="12" fill="url(#dashboardSfGrad)" letterSpacing="-0.03em">SF</text>
+          </svg>
           Superform
         </Link>
         <div className="flex items-center gap-4">
@@ -311,7 +320,16 @@ export default function Dashboard() {
         <aside className="w-[240px] border-r border-[#0D0D0D]/5 bg-white/40 backdrop-blur-xl shrink-0 flex flex-col justify-between transition-all duration-300">
           <div className="p-6">
             <div className="flex items-center gap-3 mb-10 bg-white/60 p-3 rounded-2xl border border-[#0D0D0D]/5 shadow-sm">
-              <div className="w-8 h-8 bg-[#0D0D0D] rounded-xl flex items-center justify-center text-[#FAF8F4] font-display text-sm">SF</div>
+              <svg className="w-8 h-8 rounded-xl shrink-0 shadow-sm" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                  <linearGradient id="sidebarSfGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                    <stop offset="30%" stopColor="#FAF8F4" />
+                    <stop offset="100%" stopColor="#F59E0B" />
+                  </linearGradient>
+                </defs>
+                <rect width="32" height="32" rx="7" fill="#0D0D0D"/>
+                <text x="50%" y="55%" dominantBaseline="middle" textAnchor="middle" fontFamily="system-ui, -apple-system, sans-serif" fontWeight="900" fontSize="12" fill="url(#sidebarSfGrad)" letterSpacing="-0.03em">SF</text>
+              </svg>
               <div className="flex flex-col overflow-hidden">
                 <span className="font-sans text-xs font-bold tracking-tight text-[#0D0D0D]">Main Space</span>
                 <span className="font-mono text-[7px] uppercase tracking-widest text-[#888888] mt-0.5">Personal Workspace</span>
@@ -419,19 +437,19 @@ export default function Dashboard() {
                 .map((form) => (
                   <div 
                     key={form.id} 
-                    className="group relative flex flex-col h-[280px] bg-gradient-to-b from-white to-[#FAF8F4]/30 border border-[#0D0D0D]/10 rounded-3xl shadow-[0_12px_40px_rgba(13,13,13,0.015)] hover:shadow-[0_24px_55px_rgba(13,13,13,0.045)] hover:-translate-y-1 hover:border-[#0D0D0D]/25 transition-all duration-500 p-8"
+                    className="group relative flex flex-col h-[280px] bg-white border-2 border-[#0D0D0D]/10 rounded-3xl shadow-[0_15px_45px_rgba(13,13,13,0.02)] hover:shadow-[0_30px_75px_rgba(13,13,13,0.065)] hover:-translate-y-1.5 hover:border-[#0D0D0D] transition-all duration-500 p-8"
                   >
                     <div className="flex flex-col h-full">
                       <div className="mb-5 flex justify-between items-start">
                         {getAestheticBadge(form.aesthetic)}
                       </div>
                       
-                      <h3 className="font-serif italic text-2xl leading-[1.1] group-hover:text-amber-800 transition-colors line-clamp-3 text-[#0D0D0D] font-bold">
+                      <h3 className="font-serif italic text-2.5xl leading-[1.1] group-hover:text-amber-800 transition-colors line-clamp-3 text-[#0D0D0D] font-bold">
                         {form.title}
                       </h3>
                       
                       <div className="mt-auto">
-                        <div className="h-px w-full bg-[#0D0D0D]/5 mb-4" />
+                        <div className="h-px w-full bg-[#0D0D0D]/8 mb-4" />
                         <div className="flex items-center gap-2 font-mono text-[9px] text-[#888888] tracking-wider uppercase font-semibold">
                           <span className="text-[#0D0D0D]">{form.questions?.length || 0} Questions</span>
                           <span className="w-1 h-1 rounded-full bg-[#E5E5E5]" />
@@ -462,10 +480,10 @@ export default function Dashboard() {
               {/* TACTILE NEW FORM CARD */}
               <button 
                 onClick={() => setIsIntentOpen(true)}
-                className="h-[280px] flex flex-col items-center justify-center border border-dashed border-[#0D0D0D]/10 hover:border-[#0D0D0D]/30 bg-white/40 hover:bg-white rounded-3xl group transition-all duration-500 shadow-[0_8px_30px_rgba(13,13,13,0.005)] hover:shadow-[0_20px_50px_rgba(13,13,13,0.02)] cursor-pointer"
+                className="h-[280px] flex flex-col items-center justify-center border-2 border-dashed border-[#0D0D0D]/15 hover:border-[#0D0D0D] bg-white rounded-3xl group transition-all duration-500 shadow-[0_15px_45px_rgba(13,13,13,0.02)] hover:shadow-[0_25px_60px_rgba(13,13,13,0.05)] cursor-pointer"
               >
-                <div className="w-12 h-12 rounded-full border border-dashed border-[#0D0D0D]/10 flex items-center justify-center mb-4 group-hover:border-amber-700 group-hover:scale-110 transition-all bg-white shadow-sm">
-                  <Plus className="w-5 h-5 text-muted group-hover:text-amber-700" />
+                <div className="w-12 h-12 rounded-full border-2 border-dashed border-[#0D0D0D]/15 flex items-center justify-center mb-4 group-hover:border-[#0D0D0D] group-hover:scale-110 transition-all bg-[#FAF8F5] shadow-sm">
+                  <Plus className="w-5 h-5 text-muted group-hover:text-ink" />
                 </div>
                 <div className="font-serif italic text-lg text-muted group-hover:text-[#0D0D0D] transition-colors">Start with intent</div>
               </button>

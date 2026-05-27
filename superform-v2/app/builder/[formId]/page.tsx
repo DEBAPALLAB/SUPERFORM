@@ -668,7 +668,7 @@ export default function Builder() {
       <header className="h-[54px] border-b border-border bg-[#FCFAF7] flex items-center justify-between px-6 shrink-0 shadow-sm z-20">
         <div className="flex items-center gap-4">
           <Link href="/dashboard" className="group shrink-0">
-            <svg className="w-7 h-7 rounded-[7px] group-hover:scale-105 active:scale-95 transition-all duration-300 shadow-sm" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <svg className="w-8 h-8 rounded-xl group-hover:scale-105 active:scale-95 transition-all duration-300 shadow-sm" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
               <defs>
                 <linearGradient id="builderSfGrad" x1="0%" y1="0%" x2="0%" y2="100%">
                   <stop offset="30%" stopColor="#FAF8F4" />
