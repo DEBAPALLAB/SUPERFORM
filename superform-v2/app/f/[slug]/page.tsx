@@ -275,28 +275,38 @@ export default function RespondentForm({ params }: { params: Promise<{ slug: str
     };
 
     if (transitionStyle === "Fade") return {
-      initial: { opacity: 0, scale: 0.97, filter: "blur(6px)" },
+      initial: { opacity: 0, scale: 0.98, filter: "blur(5px)" },
       animate: { opacity: 1, scale: 1, filter: "blur(0px)" },
-      exit: { opacity: 0, scale: 1.03, filter: "blur(6px)" },
+      exit: { opacity: 0, scale: 1.02, filter: "blur(5px)" },
       transition: { duration: dur * 0.7, ease: "easeInOut" }
     };
 
     if (transitionStyle === "Zoom") return {
-      initial: { opacity: 0, scale: 0.78, filter: "blur(10px)" },
+      initial: { opacity: 0, scale: motionIntensity === "High" ? 0.6 : 0.78, filter: "blur(12px)" },
       animate: { opacity: 1, scale: 1, filter: "blur(0px)" },
-      exit: { opacity: 0, scale: 1.15, filter: "blur(6px)" },
-      transition: { scale: { type: "spring", stiffness: 380, damping: 24 } }
+      exit: { opacity: 0, scale: motionIntensity === "High" ? 1.3 : 1.15, filter: "blur(8px)" },
+      transition: {
+        scale: { type: "spring", stiffness: motionIntensity === "High" ? 500 : 380, damping: 24, mass: 0.7 },
+        opacity: { duration: dur * 0.4, ease: "easeOut" },
+        filter: { duration: dur * 0.45 }
+      }
     };
 
     if (transitionStyle === "Flip") return {
-      initial: { opacity: 0, rotateX: 22, y: 30, scale: 0.95 },
+      initial: { opacity: 0, rotateX: motionIntensity === "High" ? 40 : 22, y: 30, scale: 0.95 },
       animate: { opacity: 1, rotateX: 0, y: 0, scale: 1 },
-      exit: { opacity: 0, rotateX: -18, y: -20, scale: 0.96 },
-      transition: { rotateX: { type: "spring", stiffness: 260, damping: 22 } }
+      exit: { opacity: 0, rotateX: motionIntensity === "High" ? -32 : -18, y: -20, scale: 0.96 },
+      transition: {
+        rotateX: { type: "spring", stiffness: 260, damping: 22, mass: 1.1 },
+        y: { type: "spring", stiffness: 300, damping: 26 },
+        scale: { duration: dur * 0.4 },
+        opacity: { duration: dur * 0.4, ease: "easeOut" }
+      }
     };
 
     return {
-      initial: { opacity: 0, y: 20 }, animate: { opacity: 1, y: 0 }, exit: { opacity: 0, y: -20 }
+      initial: { opacity: 0, y: 32 }, animate: { opacity: 1, y: 0 }, exit: { opacity: 0, y: -20 },
+      transition: { duration: 0.4, ease: [0.25, 0.46, 0.45, 0.94] as const }
     };
   };
 
