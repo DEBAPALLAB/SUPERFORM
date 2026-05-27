@@ -29,8 +29,21 @@ export default function Dashboard() {
   const [settingsRedirectUrl, setSettingsRedirectUrl] = useState("");
   const [settingsAllowedDomains, setSettingsAllowedDomains] = useState("");
   const [settingsResponseLimit, setSettingsResponseLimit] = useState("");
+  const [settingsAcceptingResponses, setSettingsAcceptingResponses] = useState(true);
+  const [settingsCloseAt, setSettingsCloseAt] = useState("");
+  const [settingsCustomClosedMessage, setSettingsCustomClosedMessage] = useState("");
+  const [settingsPasswordProtection, setSettingsPasswordProtection] = useState("");
+  const [settingsOneResponsePerDevice, setSettingsOneResponsePerDevice] = useState(false);
+  const [settingsSeoTitle, setSettingsSeoTitle] = useState("");
+  const [settingsSeoDescription, setSettingsSeoDescription] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [sortOrder, setSortOrder] = useState("Recent");
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.location.hash && (window.location.hash.includes("access_token") || window.location.hash.includes("id_token"))) {
+      window.history.replaceState(null, "", window.location.pathname + window.location.search);
+    }
+  }, []);
 
   useEffect(() => {
     async function loadData() {
@@ -163,6 +176,13 @@ export default function Dashboard() {
     setSettingsRedirectUrl(extraSettings.redirect_url || "");
     setSettingsAllowedDomains(extraSettings.allowed_domains || "");
     setSettingsResponseLimit(extraSettings.response_limit || "");
+    setSettingsAcceptingResponses(extraSettings.accepting_responses !== undefined ? extraSettings.accepting_responses : true);
+    setSettingsCloseAt(extraSettings.close_at || "");
+    setSettingsCustomClosedMessage(extraSettings.custom_closed_message || "");
+    setSettingsPasswordProtection(extraSettings.password_protection || "");
+    setSettingsOneResponsePerDevice(!!extraSettings.one_response_per_device);
+    setSettingsSeoTitle(extraSettings.seo_title || "");
+    setSettingsSeoDescription(extraSettings.seo_description || "");
     
     setIsSettingsOpen(true);
   };
@@ -173,12 +193,22 @@ export default function Dashboard() {
       // Embed extra settings inside the first question to keep it perfectly backward-compatible
       const updatedQuestions = [...selectedSettingsForm.questions] as any[];
       if (updatedQuestions.length > 0) {
+        const firstQ = updatedQuestions[0];
+        const currentSettings = firstQ.settings || {};
         updatedQuestions[0] = {
-          ...updatedQuestions[0],
+          ...firstQ,
           settings: {
+            ...currentSettings,
             redirect_url: settingsRedirectUrl,
             allowed_domains: settingsAllowedDomains,
-            response_limit: settingsResponseLimit
+            response_limit: settingsResponseLimit,
+            accepting_responses: settingsAcceptingResponses,
+            close_at: settingsCloseAt,
+            custom_closed_message: settingsCustomClosedMessage,
+            password_protection: settingsPasswordProtection,
+            one_response_per_device: settingsOneResponsePerDevice,
+            seo_title: settingsSeoTitle,
+            seo_description: settingsSeoDescription
           }
         };
       }
@@ -701,6 +731,98 @@ export default function Dashboard() {
                     className="w-full bg-[#FAF8F4]/50 border border-[#0D0D0D]/10 rounded-xl p-3 text-xs outline-none focus:border-[#0D0D0D] transition-colors"
                     placeholder="No limit (leave empty)"
                     min="1"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between py-1">
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-xs font-semibold text-[#0D0D0D]">Accepting Responses</span>
+                    <span className="text-[8px] text-[#888888] uppercase font-mono tracking-wider">Turn submissions on or off</span>
+                  </div>
+                  <button
+                    onClick={() => setSettingsAcceptingResponses(!settingsAcceptingResponses)}
+                    className={clsx(
+                      "w-9 h-5 rounded-full transition-all duration-300 flex items-center px-0.5 relative outline-none",
+                      settingsAcceptingResponses ? "bg-[#0D0D0D]" : "bg-[#EAE6DF]"
+                    )}
+                  >
+                    <div className={clsx(
+                      "w-4 h-4 bg-white rounded-full transition-all duration-300 shadow-sm",
+                      settingsAcceptingResponses ? "translate-x-4" : "translate-x-0"
+                    )} />
+                  </button>
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <label className="font-mono text-[8px] uppercase tracking-widest text-[#888888]">Scheduled Expiry (Close Date)</label>
+                  <input 
+                    type="datetime-local" 
+                    value={settingsCloseAt}
+                    onChange={(e) => setSettingsCloseAt(e.target.value)}
+                    className="w-full bg-[#FAF8F4]/50 border border-[#0D0D0D]/10 rounded-xl p-3 text-xs outline-none focus:border-[#0D0D0D] transition-colors"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <label className="font-mono text-[8px] uppercase tracking-widest text-[#888888]">Custom Closed Notice</label>
+                  <textarea 
+                    value={settingsCustomClosedMessage}
+                    onChange={(e) => setSettingsCustomClosedMessage(e.target.value)}
+                    rows={2}
+                    className="w-full bg-[#FAF8F4]/50 border border-[#0D0D0D]/10 rounded-xl p-3 text-xs outline-none focus:border-[#0D0D0D] transition-colors resize-none"
+                    placeholder="We are no longer accepting submissions..."
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <label className="font-mono text-[8px] uppercase tracking-widest text-[#888888]">Passcode Lock (Optional)</label>
+                  <input 
+                    type="text" 
+                    value={settingsPasswordProtection}
+                    onChange={(e) => setSettingsPasswordProtection(e.target.value)}
+                    className="w-full bg-[#FAF8F4]/50 border border-[#0D0D0D]/10 rounded-xl p-3 text-xs outline-none focus:border-[#0D0D0D] transition-colors"
+                    placeholder="Passcode for private access"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between py-1">
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-xs font-semibold text-[#0D0D0D]">Prevent Duplicate Submissions</span>
+                    <span className="text-[8px] text-[#888888] uppercase font-mono tracking-wider">Limit to one response per device</span>
+                  </div>
+                  <button
+                    onClick={() => setSettingsOneResponsePerDevice(!settingsOneResponsePerDevice)}
+                    className={clsx(
+                      "w-9 h-5 rounded-full transition-all duration-300 flex items-center px-0.5 relative outline-none",
+                      settingsOneResponsePerDevice ? "bg-[#0D0D0D]" : "bg-[#EAE6DF]"
+                    )}
+                  >
+                    <div className={clsx(
+                      "w-4 h-4 bg-white rounded-full transition-all duration-300 shadow-sm",
+                      settingsOneResponsePerDevice ? "translate-x-4" : "translate-x-0"
+                    )} />
+                  </button>
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <label className="font-mono text-[8px] uppercase tracking-widest text-[#888888]">SEO Share Title (Og:Title)</label>
+                  <input 
+                    type="text" 
+                    value={settingsSeoTitle}
+                    onChange={(e) => setSettingsSeoTitle(e.target.value)}
+                    className="w-full bg-[#FAF8F4]/50 border border-[#0D0D0D]/10 rounded-xl p-3 text-xs outline-none focus:border-[#0D0D0D] transition-colors"
+                    placeholder="Custom social share title"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <label className="font-mono text-[8px] uppercase tracking-widest text-[#888888]">SEO Share Description (Og:Description)</label>
+                  <textarea 
+                    value={settingsSeoDescription}
+                    onChange={(e) => setSettingsSeoDescription(e.target.value)}
+                    rows={2}
+                    className="w-full bg-[#FAF8F4]/50 border border-[#0D0D0D]/10 rounded-xl p-3 text-xs outline-none focus:border-[#0D0D0D] transition-colors resize-none"
+                    placeholder="Custom social share description"
                   />
                 </div>
               </div>

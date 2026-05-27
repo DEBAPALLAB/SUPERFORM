@@ -4,7 +4,18 @@ import { useState, useEffect, useCallback, use } from "react";
 import { supabase } from "@/lib/supabase";
 import { motion, AnimatePresence } from "framer-motion";
 import clsx from "clsx";
-import { ArrowRight, Check } from "lucide-react";
+import { ArrowRight, Check, Lock } from "lucide-react";
+
+interface LogicRule {
+  triggerValue: string;
+  action: "goto" | "submit" | "next";
+  targetId?: number;
+}
+
+interface QuestionLogic {
+  rules: LogicRule[];
+  fallbackAction?: "next" | "submit";
+}
 
 interface Question {
   id: number;
@@ -17,6 +28,7 @@ interface Question {
   buttonText: string;
   options?: string[];
   maxRating?: number;
+  logic?: QuestionLogic;
 }
 
 interface FormRow {
@@ -47,12 +59,29 @@ function generateUUID() {
     return v.toString(16);
   });
 }
-
 export default function RespondentForm({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = use(params);
   const [form, setForm] = useState<FormRow | null>(null);
+
+  // Simple markdown parser for rich text editing
+  const renderFormattedText = (text: string) => {
+    if (!text) return "";
+    let html = text
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+    html = html.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
+    html = html.replace(/\*(.*?)\*/g, "<em>$1</em>");
+    html = html.replace(/_(.*?)_/g, "<u>$1</u>");
+    html = html.replace(/\[(.*?)\]\((.*?)\)/g, (match, text, url) => {
+      const isSafe = !url.trim().toLowerCase().startsWith("javascript:") && !url.trim().toLowerCase().startsWith("data:");
+      return `<a href="${isSafe ? url : '#'}" target="_blank" rel="noopener noreferrer" class="underline hover:opacity-85 transition-opacity">${text}</a>`;
+    });
+    return <span dangerouslySetInnerHTML={{ __html: html }} />;
+  };
   const [loading, setLoading] = useState(true);
   const [activeQuestion, setActiveQuestion] = useState(0); // Index in questions array
+  const [historyStack, setHistoryStack] = useState<number[]>([]);
   const [answers, setAnswers] = useState<Record<number, string>>({});
   const [responseId, setResponseId] = useState<string>("");
   const [isCompleted, setIsCompleted] = useState(false);
@@ -61,6 +90,14 @@ export default function RespondentForm({ params }: { params: Promise<{ slug: str
   // Custom access control and limit controls
   const [formClosed, setFormClosed] = useState(false);
   const [accessDenied, setAccessDenied] = useState(false);
+  const [customClosedNotice, setCustomClosedNotice] = useState("");
+  const [duplicateSubmission, setDuplicateSubmission] = useState(false);
+  const [passwordRequired, setPasswordRequired] = useState(false);
+  const [enteredPassword, setEnteredPassword] = useState("");
+  const [passwordError, setPasswordError] = useState(false);
+  const [isPasswordUnlocked, setIsPasswordUnlocked] = useState(false);
+  const [rawQuestions, setRawQuestions] = useState<Question[]>([]);
+  const [correctPassword, setCorrectPassword] = useState<string>("");
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -68,6 +105,26 @@ export default function RespondentForm({ params }: { params: Promise<{ slug: str
       setIsTransparent(params.get("transparent") === "true");
     }
   }, []);
+
+  // Dynamic SEO Page Title & Meta Descriptions
+  useEffect(() => {
+    if (form) {
+      const firstQ = form.questions?.[0] as any;
+      const settings = firstQ?.settings || {};
+      const shareTitle = settings.seo_title || form.title || "Superform";
+      const shareDesc = settings.seo_description || "Built with Superform";
+      
+      document.title = shareTitle;
+      
+      let metaDesc = document.querySelector('meta[name="description"]');
+      if (!metaDesc) {
+        metaDesc = document.createElement('meta');
+        metaDesc.setAttribute('name', 'description');
+        document.head.appendChild(metaDesc);
+      }
+      metaDesc.setAttribute('content', shareDesc);
+    }
+  }, [form]);
 
   // Fetch form from Supabase
   useEffect(() => {
@@ -81,15 +138,53 @@ export default function RespondentForm({ params }: { params: Promise<{ slug: str
           .single();
 
         if (data) {
-          setForm(data as FormRow);
-          
-          // Generate a valid UUID for this response session
           const rId = generateUUID();
           setResponseId(rId);
 
-          // Retrieve nested settings
           const firstQ = data.questions?.[0] as any;
           const settings = firstQ?.settings || {};
+
+          // 0. Check Password Protection
+          if (settings.password_protection && settings.password_protection.trim()) {
+            setPasswordRequired(true);
+            setCorrectPassword(settings.password_protection.trim());
+            setRawQuestions(data.questions || []);
+            setForm({
+              ...data,
+              questions: []
+            } as any);
+          } else {
+            setForm(data as FormRow);
+          }
+
+          // 0.5 Check Duplicate Submission (One Response Per Device)
+          if (settings.one_response_per_device) {
+            const hasSubmitted = localStorage.getItem(`superform_submitted_${data.id}`);
+            if (hasSubmitted) {
+              setDuplicateSubmission(true);
+              setLoading(false);
+              return;
+            }
+          }
+
+          // 0.6 Check Accepting Responses manual toggle
+          if (settings.accepting_responses === false || settings.accepting_responses === "false") {
+            setFormClosed(true);
+            setCustomClosedNotice(settings.custom_closed_message || "This form is no longer accepting submissions.");
+            setLoading(false);
+            return;
+          }
+
+          // 0.7 Check Scheduled Close Date
+          if (settings.close_at) {
+            const closeDate = new Date(settings.close_at);
+            if (new Date() > closeDate) {
+              setFormClosed(true);
+              setCustomClosedNotice(settings.custom_closed_message || "This form has successfully closed and is no longer accepting new submissions.");
+              setLoading(false);
+              return;
+            }
+          }
 
           // 1. Check Allowed Domains Whitelist
           const allowedDomainsStr = settings.allowed_domains || "";
@@ -118,6 +213,7 @@ export default function RespondentForm({ params }: { params: Promise<{ slug: str
 
             if (!countErr && count !== null && count >= responseLimitVal) {
               setFormClosed(true);
+              setCustomClosedNotice(settings.custom_closed_message || "This form has successfully reached its maximum response ceiling and is no longer accepting new submissions.");
               setLoading(false);
               return;
             }
@@ -148,7 +244,7 @@ export default function RespondentForm({ params }: { params: Promise<{ slug: str
     loadForm();
   }, [slug]);
 
-  const questions = form?.questions || [];
+  const questions = (form?.questions || []).filter(q => q.type !== "section");
   const currentQ = questions[activeQuestion];
 
   const aesthetic = form?.aesthetic || "Editorial";
@@ -210,11 +306,29 @@ export default function RespondentForm({ params }: { params: Promise<{ slug: str
 
     if (currentQ.required && !answerVal.trim()) return;
 
-    // Save the current question's answer in local state first so bulk insert has it
     const updatedAnswers = { ...answers, [currentQ.id]: answerVal };
     setAnswers(updatedAnswers);
 
-    if (activeQuestion >= questions.length - 1) {
+    let isSubmit = false;
+    let nextIdx = activeQuestion + 1;
+
+    // Check branching routing rules
+    if (currentQ.logic?.rules && currentQ.logic.rules.length > 0) {
+      const chosenVal = answerVal.trim();
+      const matchedRule = currentQ.logic.rules.find(r => r.triggerValue === chosenVal);
+      if (matchedRule) {
+        if (matchedRule.action === "goto" && matchedRule.targetId) {
+          const targetIdx = questions.findIndex(q => q.id === matchedRule.targetId);
+          if (targetIdx !== -1) {
+            nextIdx = targetIdx;
+          }
+        } else if (matchedRule.action === "submit") {
+          isSubmit = true;
+        }
+      }
+    }
+
+    if (activeQuestion >= questions.length - 1 || isSubmit) {
       // Form is fully complete, perform bulk database inserts now!
       try {
         const rId = responseId || generateUUID();
@@ -230,25 +344,30 @@ export default function RespondentForm({ params }: { params: Promise<{ slug: str
 
         if (respError) throw respError;
 
-        // 2. Map and Bulk Insert Answers
-        const answersToInsert = questions.map((q) => {
-          const val = updatedAnswers[q.id] || "";
-          const qUuid = `00000000-0000-0000-0000-${String(q.id).padStart(12, '0')}`;
-          return {
-            id: generateUUID(),
-            response_id: rId,
-            question_id: qUuid,
-            value: val,
-            created_at: nowStr
-          };
-        });
+        // 2. Map and Bulk Insert Answers (excluding Section layouts)
+        const answersToInsert = questions
+          .filter(q => q.type !== "section")
+          .map((q) => {
+            const val = updatedAnswers[q.id] || "";
+            const qUuid = `00000000-0000-0000-0000-${String(q.id).padStart(12, '0')}`;
+            return {
+              id: generateUUID(),
+              response_id: rId,
+              question_id: qUuid,
+              value: val,
+              created_at: nowStr
+            };
+          });
 
-        const { error: ansError } = await supabase.from("answers").insert(answersToInsert);
-        if (ansError) throw ansError;
+        if (answersToInsert.length > 0) {
+          const { error: ansError } = await supabase.from("answers").insert(answersToInsert);
+          if (ansError) throw ansError;
+        }
 
         // Clear draft from localStorage on successful submit
         if (typeof window !== "undefined") {
           localStorage.removeItem(`superform_draft_${form.id}`);
+          localStorage.setItem(`superform_submitted_${form.id}`, "true");
         }
 
         // Check dynamic success action (redirect)
@@ -260,34 +379,52 @@ export default function RespondentForm({ params }: { params: Promise<{ slug: str
         }
 
         setIsCompleted(true);
-      } catch (err) {
+      } catch (err: any) {
         console.error("Failed to submit form responses:", err);
-        alert("There was an issue submitting your answers. Please try again.");
+        const errMsg = err?.message || String(err) || "Unknown error";
+        const errCode = err?.code || "";
+        const errDetails = err?.details || "";
+        const errHint = err?.hint || "";
+        console.error("Detailed Database/Postgrest Error Details:", {
+          message: errMsg,
+          code: errCode,
+          details: errDetails,
+          hint: errHint,
+          raw: err
+        });
+        alert(`There was an issue submitting your answers. Please try again.\n\nDetails: ${errMsg} ${errCode ? `(Code: ${errCode})` : ""}`);
       }
     } else {
       // Save draft in localStorage for incomplete session
       if (typeof window !== "undefined") {
         localStorage.setItem(`superform_draft_${form.id}`, JSON.stringify({
           answers: updatedAnswers,
-          activeQuestion: activeQuestion + 1
+          activeQuestion: nextIdx,
+          historyStack: [...historyStack, activeQuestion]
         }));
       }
-      setActiveQuestion(i => i + 1);
+      setHistoryStack(prev => [...prev, activeQuestion]);
+      setActiveQuestion(nextIdx);
     }
-  }, [currentQ, answers, activeQuestion, questions, responseId, form]);
+  }, [currentQ, answers, activeQuestion, questions, responseId, form, historyStack]);
 
   const regress = useCallback(() => {
-    if (activeQuestion > 0) {
-      setActiveQuestion(i => i - 1);
+    if (historyStack.length > 0) {
+      const prevIdx = historyStack[historyStack.length - 1];
+      const newStack = historyStack.slice(0, -1);
+      setHistoryStack(newStack);
+      setActiveQuestion(prevIdx);
+      
       // Save draft update in localStorage
       if (typeof window !== "undefined" && form) {
         localStorage.setItem(`superform_draft_${form.id}`, JSON.stringify({
           answers,
-          activeQuestion: activeQuestion - 1
+          activeQuestion: prevIdx,
+          historyStack: newStack
         }));
       }
     }
-  }, [activeQuestion, answers, form]);
+  }, [activeQuestion, answers, form, historyStack]);
 
   // Support hotkeys
   useEffect(() => {
@@ -340,14 +477,80 @@ export default function RespondentForm({ params }: { params: Promise<{ slug: str
     </div>
   );
 
+  if (duplicateSubmission) return (
+    <div className="h-screen flex items-center justify-center bg-[#FAF8F4] text-[#0D0D0D]">
+      <div className="text-center space-y-4 max-w-md p-6">
+        <h1 className="font-serif italic text-3xl">Already Submitted</h1>
+        <p className="font-mono text-[9px] uppercase tracking-widest text-[#888888] leading-relaxed">
+          You have already completed and submitted this form. Multiple entries have been disabled by the creator.
+        </p>
+      </div>
+    </div>
+  );
+
   if (formClosed) return (
     <div className="h-screen flex items-center justify-center bg-[#FAF8F4] text-[#0D0D0D]">
       <div className="text-center space-y-4 max-w-md p-6">
         <h1 className="font-serif italic text-3xl">Form Closed</h1>
-        <p className="font-mono text-[9px] uppercase tracking-widest text-[#888888] leading-relaxed">This form has successfully reached its maximum response ceiling and is no longer accepting new submissions.</p>
+        <p className="font-mono text-[9px] uppercase tracking-widest text-[#888888] leading-relaxed">
+          {customClosedNotice || "This form has successfully closed and is no longer accepting new submissions."}
+        </p>
       </div>
     </div>
   );
+
+  if (passwordRequired && !isPasswordUnlocked) {
+    const checkPassword = () => {
+      if (enteredPassword === correctPassword) {
+        setForm(prev => prev ? { ...prev, questions: rawQuestions } : null);
+        setIsPasswordUnlocked(true);
+        setPasswordError(false);
+        setRawQuestions([]);
+        setCorrectPassword("");
+      } else {
+        setPasswordError(true);
+      }
+    };
+
+    return (
+      <div className="h-screen flex items-center justify-center bg-[#FAF8F4] text-[#0D0D0D]">
+        <div className="w-full max-w-md bg-white border border-[#0D0D0D]/10 p-8 rounded-3xl shadow-xl flex flex-col gap-6 text-center">
+          <div className="flex flex-col items-center gap-2">
+            <div className="w-12 h-12 rounded-full bg-amber-500/10 text-amber-800 flex items-center justify-center">
+              <Lock className="w-5 h-5" />
+            </div>
+            <h1 className="font-serif italic text-2xl font-bold">Password Protected</h1>
+            <p className="font-mono text-[9px] uppercase tracking-widest text-[#888888] leading-relaxed">
+              This form is private. Enter the passcode to access.
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <input
+              type="password"
+              placeholder="Enter passcode"
+              value={enteredPassword}
+              onChange={(e) => setEnteredPassword(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && checkPassword()}
+              className="w-full bg-[#FAF8F4] border border-[#0D0D0D]/10 rounded-xl px-4 py-3 text-xs text-center outline-none focus:border-[#0D0D0D] transition-colors"
+            />
+            {passwordError && (
+              <span className="font-mono text-[8px] uppercase tracking-widest text-red-500 font-bold">
+                Incorrect passcode. Please try again.
+              </span>
+            )}
+          </div>
+
+          <button
+            onClick={checkPassword}
+            className="w-full bg-[#0D0D0D] text-[#FAF8F4] py-3 rounded-xl font-mono text-[9px] uppercase tracking-widest font-bold shadow-md hover:bg-black transition-colors"
+          >
+            Access Form
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const motionProps = getMotionProps();
 
@@ -480,19 +683,22 @@ export default function RespondentForm({ params }: { params: Promise<{ slug: str
       </AnimatePresence>
 
       <div className="flex-grow flex items-center justify-center p-4 sm:p-6 lg:p-12 z-10">
-        <div className={clsx(
-          "w-[92%] sm:w-full max-w-2xl transition-all duration-500 mx-auto",
-          surface === "Card" ? "bg-white p-6 sm:p-12 lg:p-16 rounded-xl shadow-xl border border-border/10 text-ink" : "",
-          surface === "Glass" ? "bg-white/40 backdrop-blur-3xl p-6 sm:p-12 lg:p-16 rounded-xl border border-white/40 shadow-xl text-ink" : "",
-          surface === "Frame" ? clsx(
-            "border-2 p-6 sm:p-12 lg:p-16",
-            aesthetic === "Brutalist"
-              ? (isDarkTheme ? "border-white text-white" : "border-ink text-ink")
-              : (isDarkTheme ? "border-white/20 text-white" : "border-ink/20 text-ink")
-          ) : "",
-          surface === "Flat" ? "p-6 sm:p-12 lg:p-16 text-current" : "",
-          radius === "None" ? "rounded-none" : radius === "SM" ? "rounded-md" : radius === "MD" ? "rounded-xl" : radius === "Full" ? "rounded-3xl" : ""
-        )}>
+        <div 
+          style={{ perspective: 1400 }}
+          className={clsx(
+            "w-[92%] sm:w-full max-w-2xl transition-all duration-500 mx-auto",
+            surface === "Card" ? "bg-white p-6 sm:p-12 lg:p-16 rounded-xl shadow-xl border border-border/10 text-ink" : "",
+            surface === "Glass" ? "bg-white/40 backdrop-blur-3xl p-6 sm:p-12 lg:p-16 rounded-xl border border-white/40 shadow-xl text-ink" : "",
+            surface === "Frame" ? clsx(
+              "border-2 p-6 sm:p-12 lg:p-16",
+              aesthetic === "Brutalist"
+                ? (isDarkTheme ? "border-white text-white" : "border-ink text-ink")
+                : (isDarkTheme ? "border-white/20 text-white" : "border-ink/20 text-ink")
+            ) : "",
+            surface === "Flat" ? "p-6 sm:p-12 lg:p-16 text-current" : "",
+            radius === "None" ? "rounded-none" : radius === "SM" ? "rounded-md" : radius === "MD" ? "rounded-xl" : radius === "Full" ? "rounded-3xl" : ""
+          )}
+        >
           <AnimatePresence mode="wait">
             {isCompleted ? (
               <motion.div
@@ -533,19 +739,31 @@ export default function RespondentForm({ params }: { params: Promise<{ slug: str
                   typography === "MD" ? "text-4xl" : 
                   typography === "LG" ? "text-5xl" : "text-6xl"
                 )}>
-                  {currentQ.label}
+                  {renderFormattedText(currentQ.label)}
                   {currentQ.required && <span className="text-red-500 ml-1.5">*</span>}
                 </h2>
 
                 {currentQ.description && (
                   <p className="font-sans text-sm opacity-60 mb-8 leading-relaxed">
-                    {currentQ.description}
+                    {renderFormattedText(currentQ.description)}
                   </p>
                 )}
 
                 {/* Input Fields */}
                 <div className="mb-10 mt-6">
-                  {currentQ.type === "short" || currentQ.type === "email" || currentQ.type === "phone" ? (
+                  {currentQ.type === "section" ? (
+                    <div className="flex flex-col gap-4 py-4">
+                      <button
+                        onClick={advance}
+                        className={clsx(
+                          "px-8 py-4 rounded-2xl font-sans text-sm font-bold shadow-md hover:-translate-y-0.5 active:translate-y-0 hover:shadow-lg transition-all shrink-0 w-max cursor-pointer",
+                          isDarkTheme ? "bg-white text-black hover:bg-white/90" : "bg-black text-white hover:bg-black/90"
+                        )}
+                      >
+                        Begin Section
+                      </button>
+                    </div>
+                  ) : currentQ.type === "short" || currentQ.type === "email" || currentQ.type === "phone" ? (
                     <div className={clsx(
                       "pb-3 transition-all",
                       aesthetic === "Brutalist" ? "border-b-[8px]" : "border-b-2",

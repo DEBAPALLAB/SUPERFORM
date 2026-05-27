@@ -4,12 +4,23 @@ import Link from "next/link";
 import { useState, useEffect, useRef } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-import { Play, Share, Type, AlignLeft, CheckSquare, ToggleLeft, Star, Mail, Phone, Plus, ArrowRight, Search, X, Trash2, ChevronUp, ChevronDown, Copy, Check, ExternalLink, Globe, Link2 } from "lucide-react";
+import { Play, Share, Type, AlignLeft, CheckSquare, ToggleLeft, Star, Mail, Phone, Plus, ArrowRight, Search, X, Trash2, ChevronUp, ChevronDown, Copy, Check, ExternalLink, Globe, Link2, Settings, Lock, Eye, EyeOff, Calendar, Ban, Layers } from "lucide-react";
 import clsx from "clsx";
 import { motion, AnimatePresence } from "framer-motion";
 
 type Mode = "BUILD" | "DESIGN" | "PREVIEW";
 type Aesthetic = "Minimal" | "Editorial" | "Glass" | "Brutalist" | "Cinematic";
+
+interface LogicRule {
+  triggerValue: string;
+  action: "goto" | "submit" | "next";
+  targetId?: number;
+}
+
+interface QuestionLogic {
+  rules: LogicRule[];
+  fallbackAction?: "next" | "submit";
+}
 
 interface Question {
   id: number;
@@ -22,11 +33,217 @@ interface Question {
   buttonText: string;
   options?: string[];
   maxRating?: number;
+  logic?: QuestionLogic;
+}
+
+interface CustomSelectProps {
+  value: string | number;
+  onChange: (val: string) => void;
+  options: { value: string | number; label: string; disabled?: boolean }[];
+  placeholder?: string;
+}
+
+function CustomSelect({ value, onChange, options, placeholder }: CustomSelectProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const selectedOpt = options.find(o => String(o.value) === String(value));
+
+  useEffect(() => {
+    const clickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", clickOutside);
+    return () => document.removeEventListener("mousedown", clickOutside);
+  }, []);
+
+  return (
+    <div className="relative w-full" ref={containerRef}>
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        type="button"
+        className="w-full bg-[#FAF8F5]/80 hover:bg-[#FAF8F5] border border-border/80 rounded-xl px-3 py-2 text-[10px] font-sans font-bold text-ink flex items-center justify-between gap-1.5 shadow-sm transition-all focus:border-ink/40 outline-none select-none cursor-pointer"
+      >
+        <span className="truncate flex-1 text-left">{selectedOpt ? selectedOpt.label : (placeholder || "Select...")}</span>
+        <ChevronDown className={clsx("w-3.5 h-3.5 text-muted shrink-0 transition-transform duration-300", isOpen && "rotate-180")} />
+      </button>
+
+      {isOpen && (
+        <div className="absolute left-0 right-0 top-full mt-1.5 z-[999] bg-white border border-border/80 rounded-2xl shadow-xl overflow-hidden flex flex-col p-1.5 gap-1 max-h-56 overflow-y-auto premium-scrollbar animate-in fade-in slide-in-from-top-1 duration-200">
+          {options.map((opt) => {
+            if (opt.disabled) {
+              return (
+                <div
+                  key={opt.value}
+                  className="px-3 py-2 text-[9px] font-sans font-bold text-indigo-700 bg-indigo-50/50 border-l-2 border-indigo-500 my-0.5 select-none flex items-center justify-between rounded-r-md uppercase tracking-wider"
+                >
+                  <span>{opt.label}</span>
+                  <span className="text-[8px] bg-indigo-100 text-indigo-800 px-1.5 py-0.5 rounded font-extrabold">Section</span>
+                </div>
+              );
+            }
+
+            const active = String(opt.value) === String(value);
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => {
+                  onChange(String(opt.value));
+                  setIsOpen(false);
+                }}
+                className={clsx(
+                  "w-full text-left text-[10px] font-sans px-3 py-2 rounded-xl transition-all duration-200 cursor-pointer",
+                  active 
+                    ? "bg-ink text-canvas font-bold shadow-sm" 
+                    : "text-muted hover:text-ink hover:bg-[#FAF8F5] font-medium"
+                )}
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function Builder() {
   const [mode, setMode] = useState<Mode>("BUILD");
   const [activeQuestion, setActiveQuestion] = useState(1);
+  const [collapsedSections, setCollapsedSections] = useState<Record<number, boolean>>({});
+  const [isLogicExpanderOpen, setIsLogicExpanderOpen] = useState(false);
+  const activeScrubberRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    if (activeScrubberRef.current) {
+      activeScrubberRef.current.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest",
+        inline: "center"
+      });
+    }
+  }, [activeQuestion]);
+
+  const toggleSectionCollapse = (sectId: number) => {
+    setCollapsedSections(prev => ({ ...prev, [sectId]: !prev[sectId] }));
+  };
+
+  const getSidebarSections = () => {
+    interface SidebarSection {
+      id: number;
+      label: string;
+      description?: string;
+      questions: { q: Question; originalIdx: number }[];
+    }
+    const list: SidebarSection[] = [];
+    let currentSection: SidebarSection = {
+      id: 0,
+      label: "General Section",
+      questions: []
+    };
+
+    questions.forEach((q, idx) => {
+      if (q.type === "section") {
+        if (currentSection.questions.length > 0 || currentSection.id !== 0) {
+          list.push(currentSection);
+        }
+        currentSection = {
+          id: q.id,
+          label: q.label || "Untitled Section",
+          description: q.description,
+          questions: []
+        };
+      } else {
+        currentSection.questions.push({ q, originalIdx: idx });
+      }
+    });
+    list.push(currentSection);
+    return list;
+  };
+
+  // Simple markdown parser for rich text editing
+  const renderFormattedText = (text: string) => {
+    if (!text) return "";
+    let html = text
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+    html = html.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
+    html = html.replace(/\*(.*?)\*/g, "<em>$1</em>");
+    html = html.replace(/_(.*?)_/g, "<u>$1</u>");
+    html = html.replace(/\[(.*?)\]\((.*?)\)/g, (match, text, url) => {
+      const isSafe = !url.trim().toLowerCase().startsWith("javascript:") && !url.trim().toLowerCase().startsWith("data:");
+      return `<a href="${isSafe ? url : '#'}" target="_blank" rel="noopener noreferrer" class="underline hover:opacity-85 transition-opacity">${text}</a>`;
+    });
+    return <span dangerouslySetInnerHTML={{ __html: html }} />;
+  };
+
+  const insertFormatting = (targetField: "label" | "description", syntax: "bold" | "italic" | "underline" | "link") => {
+    const textarea = document.getElementById(targetField === "label" ? "settings-q-label" : "settings-q-desc") as HTMLTextAreaElement | HTMLInputElement;
+    if (!textarea) return;
+
+    const start = textarea.selectionStart || 0;
+    const end = textarea.selectionEnd || 0;
+    const text = textarea.value;
+    const selectedText = text.substring(start, end);
+
+    let formatted = "";
+    if (syntax === "bold") {
+      formatted = `**${selectedText || "bold text"}**`;
+    } else if (syntax === "italic") {
+      formatted = `*${selectedText || "italic text"}*`;
+    } else if (syntax === "underline") {
+      formatted = `_${selectedText || "underlined text"}_`;
+    } else if (syntax === "link") {
+      formatted = `[${selectedText || "link text"}](https://example.com)`;
+    }
+
+    const newValue = text.substring(0, start) + formatted + text.substring(end);
+    updateQuestion(currentQ.id, { [targetField]: newValue });
+
+    // Focus and select
+    setTimeout(() => {
+      textarea.focus();
+      textarea.setSelectionRange(start, start + formatted.length);
+    }, 50);
+  };
+
+  const renderFormattingToolbar = (targetField: "label" | "description") => (
+    <div className="flex items-center gap-1 bg-[#F5F3F0] p-1 rounded-xl border border-border/80 w-max shadow-sm mb-1.5 self-end select-none">
+      <button
+        onClick={() => insertFormatting(targetField, "bold")}
+        className="px-2.5 py-1 hover:bg-white rounded font-mono font-bold text-[10px] transition-all text-ink cursor-pointer"
+        title="Bold"
+      >
+        B
+      </button>
+      <button
+        onClick={() => insertFormatting(targetField, "italic")}
+        className="px-2.5 py-1 hover:bg-white rounded font-mono italic text-[10px] transition-all text-ink cursor-pointer"
+        title="Italic"
+      >
+        I
+      </button>
+      <button
+        onClick={() => insertFormatting(targetField, "underline")}
+        className="px-2.5 py-1 hover:bg-white rounded font-mono underline text-[10px] transition-all text-[#0D0D0D] cursor-pointer"
+        title="Underline"
+      >
+        U
+      </button>
+      <button
+        onClick={() => insertFormatting(targetField, "link")}
+        className="px-2.5 py-1 hover:bg-white rounded text-[10px] transition-all text-ink cursor-pointer flex items-center justify-center"
+        title="Insert Link"
+      >
+        <Link2 className="w-3 h-3" />
+      </button>
+    </div>
+  );
   const [aesthetic, setAesthetic] = useState<Aesthetic>("Editorial");
   const [hoveredAesthetic, setHoveredAesthetic] = useState<Aesthetic | null>(null);
   const [surface, setSurface] = useState("Flat");
@@ -46,6 +263,12 @@ export default function Builder() {
   const [answers, setAnswers] = useState<Record<number, string>>({});
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [paletteSearch, setPaletteSearch] = useState("");
+  const [selectedPaletteIndex, setSelectedPaletteIndex] = useState(0);
+
+  useEffect(() => {
+    setSelectedPaletteIndex(0);
+  }, [paletteSearch]);
+
   const [isSaving, setIsSaving] = useState(false);
   const [hasLoaded, setHasLoaded] = useState(false);
   const { formId } = useParams();
@@ -56,6 +279,19 @@ export default function Builder() {
   const [slug, setSlug] = useState("");
   const [isPublishModalOpen, setIsPublishModalOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  // Form Settings states
+  const [acceptingResponses, setAcceptingResponses] = useState(true);
+  const [closeAt, setCloseAt] = useState("");
+  const [customClosedMessage, setCustomClosedMessage] = useState("");
+  const [passwordProtection, setPasswordProtection] = useState("");
+  const [oneResponsePerDevice, setOneResponsePerDevice] = useState(false);
+  const [seoTitle, setSeoTitle] = useState("");
+  const [seoDescription, setSeoDescription] = useState("");
+  const [redirectUrl, setRedirectUrl] = useState("");
+  const [allowedDomains, setAllowedDomains] = useState("");
+  const [responseLimit, setResponseLimit] = useState("");
+  const [isFormSettingsOpen, setIsFormSettingsOpen] = useState(false);
 
   // HTML Webpage Embed Tab configs
   const [activeShareTab, setActiveShareTab] = useState<"LINK" | "EMBED">("LINK");
@@ -79,7 +315,23 @@ export default function Builder() {
         if (data.title) setTitle(data.title);
         if (data.status) setStatus(data.status);
         if (data.slug) setSlug(data.slug);
-        if (data.questions) setQuestions(data.questions);
+        if (data.questions) {
+          setQuestions(data.questions);
+          const firstQ = data.questions[0] as any;
+          if (firstQ && firstQ.settings) {
+            const s = firstQ.settings;
+            setAcceptingResponses(s.accepting_responses !== undefined ? s.accepting_responses : true);
+            setCloseAt(s.close_at || "");
+            setCustomClosedMessage(s.custom_closed_message || "");
+            setPasswordProtection(s.password_protection || "");
+            setOneResponsePerDevice(!!s.one_response_per_device);
+            setSeoTitle(s.seo_title || "");
+            setSeoDescription(s.seo_description || "");
+            setRedirectUrl(s.redirect_url || "");
+            setAllowedDomains(s.allowed_domains || "");
+            setResponseLimit(s.response_limit || "");
+          }
+        }
         if (data.aesthetic) setAesthetic(data.aesthetic);
         if (data.surface) setSurface(data.surface);
         if (data.typography) setTypography(data.typography);
@@ -106,6 +358,18 @@ export default function Builder() {
     fetchFormAndUser();
   }, [formId]);
 
+  // Hotkey listener for Command Palette (Ctrl + Q or Cmd + Q)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "q") {
+        e.preventDefault();
+        setIsCommandPaletteOpen(prev => !prev);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   const isInitialMount = useRef(true);
 
   // Auto-save
@@ -120,16 +384,26 @@ export default function Builder() {
     const timer = setTimeout(async () => {
       setIsSaving(true);
       
-      // Inject author_name into first question's settings
+      // Inject settings into first question's settings
       let updatedQuestions = [...questions] as any[];
-      if (updatedQuestions.length > 0 && authorName) {
+      if (updatedQuestions.length > 0) {
         const firstQ = updatedQuestions[0];
         const currentSettings = firstQ.settings || {};
         updatedQuestions[0] = {
           ...firstQ,
           settings: {
             ...currentSettings,
-            author_name: authorName
+            author_name: authorName,
+            accepting_responses: acceptingResponses,
+            close_at: closeAt,
+            custom_closed_message: customClosedMessage,
+            password_protection: passwordProtection,
+            one_response_per_device: oneResponsePerDevice,
+            seo_title: seoTitle,
+            seo_description: seoDescription,
+            redirect_url: redirectUrl,
+            allowed_domains: allowedDomains,
+            response_limit: responseLimit
           }
         };
       }
@@ -159,7 +433,7 @@ export default function Builder() {
     }, 1500);
 
     return () => clearTimeout(timer);
-  }, [title, questions, aesthetic, surface, typography, radius, grain, motionIntensity, transitionStyle, progressStyle, formId, hasLoaded, authorName]);
+  }, [title, questions, aesthetic, surface, typography, radius, grain, motionIntensity, transitionStyle, progressStyle, formId, hasLoaded, authorName, acceptingResponses, closeAt, customClosedMessage, passwordProtection, oneResponsePerDevice, seoTitle, seoDescription, redirectUrl, allowedDomains, responseLimit]);
 
   const currentAesthetic = hoveredAesthetic || aesthetic;
   const currentQ = questions.find(q => q.id === activeQuestion) || questions[0];
@@ -286,6 +560,26 @@ export default function Builder() {
     setQuestions(qs => qs.map(q => q.id === id ? { ...q, ...updates } : q));
   };
 
+  const updateOptionLogic = (optionVal: string, action: "next" | "submit" | "goto", targetId?: number) => {
+    const currentQ = questions.find(q => q.id === activeQuestion);
+    if (!currentQ) return;
+    const currentRules = currentQ.logic?.rules || [];
+    let newRules = currentRules.filter(r => r.triggerValue !== optionVal);
+    if (action !== "next") {
+      newRules.push({
+        triggerValue: optionVal,
+        action,
+        targetId
+      });
+    }
+    updateQuestion(currentQ.id, {
+      logic: {
+        rules: newRules,
+        fallbackAction: currentQ.logic?.fallbackAction || "next"
+      }
+    });
+  };
+
   const nextQuestion = () => {
     const currentIndex = questions.findIndex(q => q.id === activeQuestion);
     if (currentIndex < questions.length - 1) {
@@ -362,6 +656,9 @@ export default function Builder() {
     { section: "Contact", items: [
       { id: "email", label: "Email", icon: Mail },
       { id: "phone", label: "Phone Number", icon: Phone },
+    ]},
+    { section: "Layout", items: [
+      { id: "section", label: "Section Break", icon: Layers },
     ]}
   ];
 
@@ -393,14 +690,16 @@ export default function Builder() {
           />
         </div>
 
-        <div className="flex bg-[#F5F3F0] p-1 rounded-full border border-border">
+        <div className="flex bg-[#F5F3F0]/90 backdrop-blur-md p-1 rounded-full border border-border/80 shadow-[inset_0_1px_3px_rgba(0,0,0,0.02)] gap-0.5">
           {(["BUILD", "DESIGN", "PREVIEW"] as Mode[]).map((m) => (
             <button
               key={m}
               onClick={() => setMode(m)}
               className={clsx(
-                "px-4 py-1 rounded-full font-mono text-[10px] uppercase tracking-widest transition-all",
-                mode === m ? "bg-ink text-canvas shadow-sm" : "text-muted hover:text-ink"
+                "px-5 py-1.5 rounded-full font-mono text-[9px] uppercase tracking-widest transition-all duration-300 font-bold hover:scale-[1.02] active:scale-[0.98]",
+                mode === m 
+                  ? "bg-ink text-canvas shadow-[0_2px_8px_rgba(13,13,13,0.15)] font-extrabold" 
+                  : "text-[#888888] hover:text-ink hover:bg-white/40"
               )}
             >
               {m}
@@ -408,29 +707,55 @@ export default function Builder() {
           ))}
         </div>
 
-        <div className="flex items-center gap-4">
-          <span className={clsx(
-            "font-mono text-[9px] uppercase tracking-widest transition-colors",
-            isSaving ? "text-blue-500 animate-pulse" : "text-muted"
-          )}>
-            {isSaving ? "Saving..." : "Saved"}
-          </span>
-          <button 
-            onClick={() => setMode("PREVIEW")}
-            className="text-xs font-mono uppercase tracking-widest text-muted hover:text-ink transition-colors flex items-center gap-2"
-          >
-            <Play className="w-3 h-3" /> Preview
-          </button>
-          <button 
-            onClick={handlePublish}
-            className="bg-ink text-canvas px-4 py-1.5 text-[10px] font-mono uppercase tracking-widest hover:bg-ink/90 transition-colors flex items-center gap-2"
-          >
-            {status === "published" ? "Published" : "Publish"}
+        <div className="flex items-center gap-3">
+          {/* Saved Status Indicator */}
+          <div className="flex items-center gap-1.5 mr-2 select-none">
             <div className={clsx(
-              "w-1.5 h-1.5 rounded-full transition-all duration-300",
-              status === "published" ? "bg-emerald-400 shadow-[0_0_8px_#34d399] animate-pulse" : "bg-canvas"
+              "w-1.5 h-1.5 rounded-full transition-all duration-500",
+              isSaving ? "bg-blue-400 animate-pulse shadow-[0_0_8px_#60a5fa]" : "bg-emerald-400 shadow-[0_0_6px_#34d399]"
             )} />
-          </button>
+            <span className={clsx(
+              "font-mono text-[9px] uppercase tracking-widest font-bold transition-colors duration-300",
+              isSaving ? "text-blue-500" : "text-muted"
+            )}>
+              {isSaving ? "Saving" : "Saved"}
+            </span>
+          </div>
+
+          {/* Action capsule suite */}
+          <div className="flex items-center bg-[#F5F3F0] p-1 rounded-full border border-border/80 shadow-sm gap-0.5">
+            <button 
+              onClick={() => setMode("PREVIEW")}
+              className="px-3 py-1.5 rounded-full font-mono text-[9px] uppercase tracking-widest transition-all duration-300 text-[#888888] hover:text-ink hover:bg-white/60 flex items-center gap-1.5 cursor-pointer font-bold"
+            >
+              <Play className="w-3 h-3 text-[#888888]" /> Preview
+            </button>
+
+            <button 
+              onClick={handlePublish}
+              className={clsx(
+                "px-3.5 py-1.5 rounded-full font-mono text-[9px] uppercase tracking-widest transition-all duration-300 flex items-center gap-1.5 font-bold shadow-sm",
+                status === "published" 
+                  ? "bg-ink text-canvas hover:bg-ink/90" 
+                  : "bg-white text-ink border border-border/60 hover:bg-white/95"
+              )}
+            >
+              <span>{status === "published" ? "Published" : "Publish"}</span>
+              <div className={clsx(
+                "w-1.5 h-1.5 rounded-full transition-all duration-300",
+                status === "published" ? "bg-emerald-400 shadow-[0_0_8px_#34d399] animate-pulse" : "bg-[#888888]/40"
+              )} />
+            </button>
+
+            <button 
+              onClick={() => setIsFormSettingsOpen(true)}
+              className="px-3 py-1.5 rounded-full font-mono text-[9px] uppercase tracking-widest transition-all duration-300 text-[#888888] hover:text-ink hover:bg-white/60 flex items-center gap-1.5 cursor-pointer group font-bold"
+              title="Configure Form Settings"
+            >
+              <Settings className="w-3 h-3 text-[#888888] group-hover:text-ink transition-transform duration-700 group-hover:rotate-90 shrink-0" />
+              <span>Settings</span>
+            </button>
+          </div>
         </div>
       </header>
 
@@ -439,87 +764,156 @@ export default function Builder() {
         {/* LEFT PANEL - Changes based on mode */}
         {mode === "BUILD" && (
           <aside className="w-[320px] border-r border-border flex flex-col bg-[#FAF8F5] shrink-0 premium-scrollbar overflow-hidden z-10 h-full">
-            <div className="flex-1 overflow-y-auto p-5 border-b border-border/80" data-lenis-prevent>
+            <div className="flex-1 overflow-y-auto no-scrollbar p-5 border-b border-border/80" data-lenis-prevent>
               <div className="font-mono text-[9px] uppercase tracking-[0.2em] text-muted/65 font-bold mb-5">Question Blocks</div>
-              <div className="flex flex-col gap-2">
-                {questions.map((q, idx) => {
-                  const QIcon = q.type === 'long' ? AlignLeft : 
-                                q.type === 'multiple' ? CheckSquare : 
-                                q.type === 'yesno' ? ToggleLeft : 
-                                q.type === 'rating' ? Star : 
-                                q.type === 'email' ? Mail : 
-                                q.type === 'phone' ? Phone : Type;
+              <div className="flex flex-col gap-4">
+                {getSidebarSections().map((section, sIdx) => {
+                  const isCollapsed = collapsedSections[section.id];
+                  const isSectActive = activeQuestion === section.id;
+
                   return (
-                    <div key={q.id} className="group relative">
-                      <button 
-                        onClick={() => setActiveQuestion(q.id)}
-                        className={clsx(
-                          "w-full text-left px-3.5 py-3 rounded-2xl text-xs flex items-center gap-3 font-sans transition-all duration-300 relative border",
-                          activeQuestion === q.id 
-                            ? "bg-white text-ink shadow-[0_12px_24px_-8px_rgba(0,0,0,0.06)] border-[#0D0D0D]/15 translate-x-1 font-bold" 
-                            : "text-muted hover:text-ink hover:bg-white/60 bg-transparent border-transparent hover:translate-x-1"
-                        )}
-                      >
-                        {/* Active vertical accent bar */}
-                        <div className={clsx(
-                          "w-1 h-5 rounded-full transition-all duration-300 shrink-0",
-                          activeQuestion === q.id ? "bg-ink scale-y-100" : "bg-transparent scale-y-0"
-                        )} />
-                        
-                        {/* Block Type Icon Container */}
-                        <div className={clsx(
-                          "w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-all duration-300",
-                          activeQuestion === q.id ? "bg-ink/5 text-ink" : "bg-[#F3EFEA] text-muted group-hover:text-ink"
-                        )}>
-                          <QIcon className="w-3.5 h-3.5" />
-                        </div>
-                        
-                        <div className="flex flex-col flex-grow min-w-0">
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-mono text-[9px] opacity-40 shrink-0">{String(idx + 1).padStart(2, '0')}</span>
-                            <span className="truncate flex-1 text-[11px] tracking-wide">{q.label || "Untitled Block"}</span>
-                            {q.required && <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" title="Required" />}
+                    <div key={section.id} className="flex flex-col">
+                      {/* Section Capsule Header */}
+                      {section.id !== 0 && (
+                        <div 
+                          className={clsx(
+                            "group relative flex items-center justify-between px-3 py-2 rounded-2xl border transition-all duration-300 font-sans cursor-pointer mb-1 text-[11px]",
+                            isSectActive 
+                              ? "bg-[#E2DBCE] border-[#D6CDBC] text-ink font-bold shadow-sm" 
+                              : "bg-[#ECE6DC] border-[#DFD8CE] text-[#332F2A] hover:bg-[#E2DBCE] hover:text-ink font-semibold"
+                          )}
+                          onClick={() => {
+                            setActiveQuestion(section.id);
+                          }}
+                        >
+                          <div className="flex items-center gap-2 min-w-0" onClick={(e) => {
+                            e.stopPropagation();
+                            toggleSectionCollapse(section.id);
+                          }}>
+                            <Layers className="w-3.5 h-3.5 shrink-0 text-indigo-600 opacity-100" />
+                            <span className="truncate">{section.label || `Section ${sIdx + 1}`}</span>
+                            <span className="font-mono text-[8px] bg-indigo-50 border border-indigo-100/40 px-1.5 py-0.5 rounded text-indigo-700 shrink-0 font-bold shadow-sm">
+                              {section.questions.length} blocks
+                            </span>
+                          </div>
+
+                          {/* Section Action Overlay */}
+                          <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-all duration-200 bg-white/90 backdrop-blur-sm rounded-lg p-0.5 shadow-md border border-border scale-90 group-hover:scale-100" onClick={e => e.stopPropagation()}>
+                            <button 
+                              onClick={() => deleteQuestion(section.id)}
+                              className="p-1 hover:bg-red-50 rounded text-muted hover:text-red-500 transition-colors"
+                              title="Delete Section"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
                           </div>
                         </div>
-                      </button>
-                      
-                      {/* Action Overlay */}
-                      <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all duration-200 bg-white/90 backdrop-blur-sm rounded-xl p-1 shadow-lg border border-border/80 scale-90 group-hover:scale-100">
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); moveQuestion(q.id, 'up'); }}
-                          disabled={idx === 0}
-                          className="p-1.5 hover:bg-black/5 rounded-lg text-muted hover:text-ink disabled:opacity-20 transition-colors"
-                          title="Move Up"
-                        >
-                          <ChevronUp className="w-3.5 h-3.5" />
-                        </button>
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); moveQuestion(q.id, 'down'); }}
-                          disabled={idx === questions.length - 1}
-                          className="p-1.5 hover:bg-black/5 rounded-lg text-muted hover:text-ink disabled:opacity-20 transition-colors"
-                          title="Move Down"
-                        >
-                          <ChevronDown className="w-3.5 h-3.5" />
-                        </button>
-                        <div className="w-px h-3 bg-border/85 mx-0.5" />
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); deleteQuestion(q.id); }}
-                          className="p-1.5 hover:bg-red-50 rounded-lg text-muted hover:text-red-500 transition-colors"
-                          title="Delete Block"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
+                      )}
+
+                      {/* Section Questions List (with visual dotted tree connector) */}
+                      {(!isCollapsed || section.id === 0) && (
+                        <div className={clsx(
+                          "flex flex-col gap-2 relative",
+                          section.id !== 0 ? "pl-4 border-l border-dashed border-ink/10 ml-4 mt-1 mb-2" : ""
+                        )}>
+                          {section.questions.map(({ q, originalIdx }) => {
+                            const QIcon = q.type === 'long' ? AlignLeft : 
+                                          q.type === 'multiple' ? CheckSquare : 
+                                          q.type === 'yesno' ? ToggleLeft : 
+                                          q.type === 'rating' ? Star : 
+                                          q.type === 'email' ? Mail : 
+                                          q.type === 'phone' ? Phone : Type;
+                            const hasLogic = q.logic && q.logic.rules && q.logic.rules.length > 0;
+
+                            return (
+                              <div key={q.id} className="group relative">
+                                <button 
+                                  onClick={() => setActiveQuestion(q.id)}
+                                  className={clsx(
+                                    "w-full text-left px-3.5 py-2.5 rounded-xl text-xs flex items-center gap-3 font-sans transition-all duration-300 relative border",
+                                    activeQuestion === q.id 
+                                      ? "bg-white text-ink shadow-md border-[#0D0D0D]/15 translate-x-1 font-bold" 
+                                      : "text-muted hover:text-ink hover:bg-white/60 bg-transparent border-transparent hover:translate-x-1"
+                                  )}
+                                >
+                                  {/* Active vertical accent bar */}
+                                  <div className={clsx(
+                                    "w-0.5 h-4 rounded-full transition-all duration-300 shrink-0",
+                                    activeQuestion === q.id ? "bg-ink scale-y-100" : "bg-transparent scale-y-0"
+                                  )} />
+                                  
+                                  {/* Block Type Icon Container */}
+                                  <div className={clsx(
+                                    "w-6.5 h-6.5 rounded-lg flex items-center justify-center shrink-0 transition-all duration-300",
+                                    activeQuestion === q.id ? "bg-ink/5 text-ink" : "bg-[#F3EFEA] text-muted group-hover:text-ink"
+                                  )}>
+                                    <QIcon className="w-3.5 h-3.5" />
+                                  </div>
+                                  
+                                  <div className="flex flex-col flex-grow min-w-0">
+                                    <div className="flex items-center gap-1.5 justify-between">
+                                      <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                                        <span className="font-mono text-[9px] opacity-40 shrink-0">{String(originalIdx + 1).padStart(2, '0')}</span>
+                                        <span className="truncate text-[11px] tracking-wide">{q.label || "Untitled Block"}</span>
+                                      </div>
+                                      
+                                      {hasLogic && (
+                                        <span className="font-mono text-[8px] bg-indigo-50 border border-indigo-100 px-1 py-0.2 rounded text-indigo-600 font-bold shrink-0 shadow-sm animate-pulse" title="⇌ Logic Active">
+                                          ⇌
+                                        </span>
+                                      )}
+                                      
+                                      {q.required && <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0 ml-1" title="Required" />}
+                                    </div>
+                                  </div>
+                                </button>
+                                
+                                {/* Action Overlay */}
+                                <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all duration-200 bg-white/90 backdrop-blur-sm rounded-xl p-1 shadow-lg border border-border/80 scale-90 group-hover:scale-100">
+                                  <button 
+                                    onClick={(e) => { e.stopPropagation(); moveQuestion(q.id, 'up'); }}
+                                    disabled={originalIdx === 0}
+                                    className="p-1.5 hover:bg-black/5 rounded-lg text-muted hover:text-ink disabled:opacity-20 transition-colors"
+                                    title="Move Up"
+                                  >
+                                    <ChevronUp className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button 
+                                    onClick={(e) => { e.stopPropagation(); moveQuestion(q.id, 'down'); }}
+                                    disabled={originalIdx === questions.length - 1}
+                                    className="p-1.5 hover:bg-black/5 rounded-lg text-muted hover:text-ink disabled:opacity-20 transition-colors"
+                                    title="Move Down"
+                                  >
+                                    <ChevronDown className="w-3.5 h-3.5" />
+                                  </button>
+                                  <div className="w-px h-3 bg-border/85 mx-0.5" />
+                                  <button 
+                                    onClick={(e) => { e.stopPropagation(); deleteQuestion(q.id); }}
+                                    className="p-1.5 hover:bg-red-50 rounded-lg text-muted hover:text-red-500 transition-colors"
+                                    title="Delete Block"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
                 
                 <button 
                   onClick={() => setIsCommandPaletteOpen(true)}
-                  className="w-full text-left px-4 py-3 mt-3 rounded-2xl text-xs flex items-center gap-2 font-sans text-muted hover:text-ink hover:bg-white bg-transparent border border-dashed border-[#0D0D0D]/15 hover:border-[#0D0D0D]/35 hover:shadow-sm transition-all duration-300"
+                  className="w-full text-left px-4 py-3 mt-3 rounded-2xl text-xs flex items-center justify-between font-sans text-[#888888] hover:text-ink hover:bg-white bg-transparent border border-dashed border-[#0D0D0D]/15 hover:border-[#0D0D0D]/35 hover:shadow-sm transition-all duration-300 group"
+                  title="Hotkey: Ctrl + Q"
                 >
-                  <Plus className="w-4 h-4 shrink-0 opacity-60" />
-                  <span className="font-mono text-[9px] uppercase tracking-widest font-bold">Add Question Block</span>
+                  <div className="flex items-center gap-2">
+                    <Plus className="w-4 h-4 shrink-0 opacity-60 group-hover:scale-110 transition-transform" />
+                    <span className="font-mono text-[9px] uppercase tracking-widest font-bold">Add Question Block</span>
+                  </div>
+                  <kbd className="font-mono text-[8px] opacity-40 group-hover:opacity-70 bg-[#F3EFEA] border border-[#0D0D0D]/5 group-hover:bg-[#FAF8F5] px-1.5 py-0.5 rounded transition-all select-none">Ctrl + Q</kbd>
                 </button>
               </div>
             </div>
@@ -538,7 +932,7 @@ export default function Builder() {
 
         {mode === "DESIGN" && (
           <aside className="w-[320px] border-r border-border flex flex-col bg-[#FAF8F5] shrink-0 premium-scrollbar overflow-hidden z-10 h-full">
-            <div className="flex-1 overflow-y-auto p-5 space-y-6" data-lenis-prevent>
+            <div className="flex-1 overflow-y-auto no-scrollbar p-5 space-y-6" data-lenis-prevent>
               <div>
                 <div className="font-mono text-[9px] uppercase tracking-[0.2em] text-muted/65 font-bold mb-4">Art Direction</div>
                 <div className="flex flex-col gap-2">
@@ -711,10 +1105,13 @@ export default function Builder() {
               </div>
             )}
 
-            <div className={clsx(
-              "flex-1 flex justify-center z-10 relative overflow-y-auto premium-scrollbar transition-all duration-500",
-              previewDevice === "mobile" ? "items-start p-6" : "items-center p-12 lg:p-24"
-            )}>
+            <div 
+              style={{ perspective: 1400 }}
+              className={clsx(
+                "flex-1 flex justify-center z-10 relative overflow-y-auto premium-scrollbar transition-all duration-500",
+                previewDevice === "mobile" ? "items-start p-6" : "items-center p-12 lg:p-24"
+              )}
+            >
               {/* FILM GRAIN OVERLAY */}
               {grain && (
                 <div className="absolute inset-0 z-50 pointer-events-none opacity-[0.03] mix-blend-overlay" 
@@ -770,7 +1167,7 @@ export default function Builder() {
                       >
                         {char}
                       </span>
-                    )) : currentQ.label}
+                    )) : renderFormattedText(currentQ.label)}
                   </h2>
                   
                   {currentQ.description && (
@@ -781,10 +1178,20 @@ export default function Builder() {
                       currentAesthetic === "Cinematic" ? "tracking-widest uppercase text-[10px] opacity-50" : "",
                       previewDevice === "mobile" ? "text-[10px] mb-6" : "text-sm mb-8",
                       isDarkTheme ? "text-white/60" : "text-ink/60"
-                    )}>{currentQ.description}</p>
+                    )}>{renderFormattedText(currentQ.description)}</p>
                   )}
                   
-                  {currentQ.type === "short" || currentQ.type === "email" || currentQ.type === "phone" ? (
+                  {currentQ.type === "section" ? (
+                    <div className="p-8 border border-dashed border-border/80 bg-[#FAF8F5]/50 rounded-3xl text-center flex flex-col items-center justify-center gap-4">
+                      <Layers className="w-8 h-8 text-muted/60" />
+                      <div className="flex flex-col gap-1">
+                        <span className="font-mono text-[9px] uppercase tracking-widest text-[#888888] font-bold">Section Split Block</span>
+                        <p className="text-xs text-muted/80 leading-relaxed font-sans max-w-md">
+                          This block acts as a clean visual division page. All subsequent questions belong to this section.
+                        </p>
+                      </div>
+                    </div>
+                  ) : currentQ.type === "short" || currentQ.type === "email" || currentQ.type === "phone" ? (
                     <div className={clsx(
                       "pb-4 transition-all duration-300",
                       currentAesthetic === "Brutalist" ? "border-b-[8px]" : "border-b-2",
@@ -971,7 +1378,6 @@ export default function Builder() {
                   <div className="absolute top-0 left-0 w-1 h-full bg-white" />
                   <div className="absolute bottom-0 right-0 w-full h-1 bg-white" />
                   <div className="absolute bottom-0 right-0 w-1 h-full bg-white" />
-                  <div className="absolute top-12 left-12 px-3 py-1 bg-white text-black font-mono text-[10px] uppercase tracking-widest">AESTHETIC_V2_BRTL</div>
                 </motion.div>
               )}
               {currentAesthetic === "Cinematic" && (
@@ -1004,28 +1410,51 @@ export default function Builder() {
 
             {/* QUESTION SCRUBBER (Only in BUILD mode) */}
             {mode === "BUILD" && (
-              <div className="h-[80px] bg-canvas border-t border-border flex items-center justify-between px-6 absolute bottom-0 w-full z-20">
-                <button onClick={prevQuestion} className="text-muted hover:text-ink flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest transition-colors">
-                  <ArrowRight className="w-3 h-3 rotate-180" /> Prev
+              <div className="h-[92px] bg-[#FAF8F5] border-t border-border/80 flex items-center justify-between px-8 absolute bottom-0 w-full z-20 shadow-[0_-8px_30px_rgba(0,0,0,0.015)]">
+                <button 
+                  onClick={prevQuestion} 
+                  className="bg-white border border-[#0D0D0D]/10 hover:border-[#0D0D0D]/20 text-[#4f4a42] hover:text-ink px-4 py-2.5 rounded-2xl text-[10px] font-sans font-extrabold uppercase tracking-widest transition-all duration-300 flex items-center gap-2 shadow-sm active:scale-95 shrink-0 cursor-pointer"
+                >
+                  <ArrowRight className="w-3.5 h-3.5 rotate-180 transition-transform duration-300 group-hover:-translate-x-0.5" /> Prev
                 </button>
                 
-                <div className="flex items-center gap-2 overflow-x-auto px-4 no-scrollbar">
-                  {questions.map((q, idx) => (
-                    <button 
-                      key={q.id}
-                      onClick={() => setActiveQuestion(q.id)}
-                      className={clsx(
-                        "px-3 py-1.5 rounded-full font-mono text-[10px] transition-all border whitespace-nowrap",
-                        activeQuestion === q.id ? "bg-ink text-canvas border-ink px-5 shadow-lg" : "bg-transparent text-muted border-border hover:border-ink hover:text-ink"
-                      )}
-                    >
-                      {String(idx + 1).padStart(2, '0')} {q.label.length > 8 ? q.label.substring(0, 8) + "..." : q.label}
-                    </button>
-                  ))}
+                <div className="flex items-center gap-2.5 overflow-x-auto px-6 no-scrollbar py-2">
+                  {questions.map((q, idx) => {
+                    const isSection = q.type === "section";
+                    const active = activeQuestion === q.id;
+                    const label = q.label || (isSection ? "Section Break" : `Block ${idx + 1}`);
+                    const truncatedLabel = label.length > 15 ? label.substring(0, 15) + "..." : label;
+
+                    return (
+                      <button 
+                        key={q.id}
+                        ref={active ? activeScrubberRef : null}
+                        onClick={() => setActiveQuestion(q.id)}
+                        className={clsx(
+                          "px-4 py-2 rounded-2xl font-sans text-[11px] font-bold transition-all border whitespace-nowrap flex items-center gap-2 cursor-pointer shadow-sm",
+                          active
+                            ? (isSection 
+                                ? "bg-indigo-600 text-white border-indigo-600 scale-105 px-5 shadow-indigo-600/10 shadow-lg" 
+                                : "bg-ink text-canvas border-ink scale-105 px-5 shadow-md")
+                            : (isSection
+                                ? "bg-indigo-50/60 text-indigo-700 border-indigo-100/60 hover:bg-indigo-50 hover:border-indigo-200"
+                                : "bg-white text-[#4f4a42] border-[#0D0D0D]/10 hover:border-ink hover:text-ink")
+                        )}
+                      >
+                        {isSection && <Layers className={clsx("w-3 h-3 shrink-0", active ? "text-white" : "text-indigo-600")} />}
+                        <span>
+                          {String(idx + 1).padStart(2, '0')} • {truncatedLabel}
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
 
-                <button onClick={nextQuestion} className="text-muted hover:text-ink flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest transition-colors">
-                  Next <ArrowRight className="w-3 h-3" />
+                <button 
+                  onClick={nextQuestion} 
+                  className="bg-white border border-[#0D0D0D]/10 hover:border-[#0D0D0D]/20 text-[#4f4a42] hover:text-ink px-4 py-2.5 rounded-2xl text-[10px] font-sans font-extrabold uppercase tracking-widest transition-all duration-300 flex items-center gap-2 shadow-sm active:scale-95 shrink-0 cursor-pointer"
+                >
+                  Next <ArrowRight className="w-3.5 h-3.5 transition-transform duration-300 group-hover:translate-x-0.5" />
                 </button>
               </div>
             )}
@@ -1037,11 +1466,95 @@ export default function Builder() {
           <aside className="w-[290px] border-l border-border bg-[#FAF8F5] shrink-0 p-5 overflow-y-auto overflow-x-hidden premium-scrollbar z-10" data-lenis-prevent>
             <div className="font-mono text-[9px] uppercase tracking-[0.2em] text-muted/65 font-bold mb-6 border-b border-border/80 pb-4">Question Settings</div>
 
+            {(currentQ.type === "multiple" || currentQ.type === "yesno") && (
+              <div className="mb-6 pb-6 border-b border-border/80">
+                <button 
+                  onClick={() => setIsLogicExpanderOpen(!isLogicExpanderOpen)}
+                  className="w-full flex items-center justify-between font-sans text-xs text-ink hover:text-[#0d0d0d] font-bold transition-all outline-none cursor-pointer group py-1"
+                >
+                  <span className="flex items-center gap-2">
+                    <span className="text-indigo-600 text-sm font-normal">⇌</span>
+                    <span>Dynamic Routing Rules</span>
+                    <span className={clsx(
+                      "font-sans text-[9px] px-2 py-0.5 rounded-full font-bold shrink-0 shadow-sm tracking-normal transition-colors",
+                      (currentQ.logic?.rules?.length || 0) > 0
+                        ? "bg-indigo-600 text-white"
+                        : "bg-border/60 text-muted"
+                    )}>
+                      {currentQ.logic?.rules?.length || 0} active
+                    </span>
+                  </span>
+                  <ChevronDown className={clsx(
+                    "w-3.5 h-3.5 text-muted group-hover:text-ink transition-transform duration-300 shrink-0",
+                    isLogicExpanderOpen && "rotate-180"
+                  )} />
+                </button>
+                
+                {isLogicExpanderOpen && (
+                  <div className="flex flex-col gap-3 mt-3">
+                    {(currentQ.type === "multiple" 
+                      ? (currentQ.options || ["Option 1", "Option 2", "Option 3"])
+                      : ["Yes", "No"]
+                    ).map((opt: string) => {
+                      const rule = currentQ.logic?.rules?.find(r => r.triggerValue === opt);
+                      const currentAction = rule?.action || "next";
+                      const currentTargetId = rule?.targetId || "";
+
+                      return (
+                        <div key={opt} className="p-3 bg-white border border-border/60 rounded-2xl flex flex-col gap-2 shadow-[0_4px_12px_rgba(0,0,0,0.005)] hover:border-ink/20 transition-all">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 shrink-0" />
+                            <span className="text-[10px] font-sans font-bold text-ink truncate flex-1" title={opt}>{opt}</span>
+                          </div>
+                          
+                          <div className="flex flex-col gap-1.5 mt-1">
+                            <CustomSelect 
+                              value={currentAction}
+                              onChange={(val) => {
+                                const act = val as "next" | "submit" | "goto";
+                                const firstTarget = questions.find(q => q.id !== currentQ.id)?.id;
+                                updateOptionLogic(opt, act, act === "goto" ? firstTarget : undefined);
+                              }}
+                              options={[
+                                { value: "next", label: "Continue to next block" },
+                                { value: "goto", label: "Jump to a specific block" },
+                                { value: "submit", label: "Immediately End & Submit" }
+                              ]}
+                            />
+
+                            {currentAction === "goto" && (
+                              <CustomSelect 
+                                value={currentTargetId}
+                                onChange={(val) => {
+                                  updateOptionLogic(opt, "goto", parseInt(val, 10));
+                                }}
+                                options={questions
+                                  .filter(q => q.id !== currentQ.id)
+                                  .map(q => ({
+                                    value: q.id,
+                                    label: q.type === "section" ? (q.label || "Untitled Section") : `${String(questions.indexOf(q) + 1).padStart(2, '0')} • ${q.label || "Untitled"}`,
+                                    disabled: q.type === "section"
+                                  }))}
+                              />
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
               <div className="flex flex-col gap-5">
                 <div className="flex flex-col gap-2 group">
-                  <label className="font-mono text-[9px] uppercase tracking-widest text-muted group-focus-within:text-ink transition-colors font-bold">Question Title</label>
+                  <div className="flex justify-between items-center">
+                    <label className="font-mono text-[9px] uppercase tracking-widest text-muted group-focus-within:text-ink transition-colors font-bold">Question Title</label>
+                    {renderFormattingToolbar("label")}
+                  </div>
                   <textarea 
-                    className="w-full border border-[#0D0D0D]/10 bg-white/60 p-3 rounded-2xl font-sans text-xs resize-none focus:border-ink/40 focus:bg-white focus:shadow-md outline-none transition-all duration-300" 
+                    id="settings-q-label"
+                    className="w-full border border-[#0D0D0D]/15 bg-white p-3 rounded-2xl font-sans text-xs resize-none focus:border-ink/40 focus:shadow-md outline-none transition-all duration-300 hover:border-[#0D0D0D]/25 shadow-sm" 
                     rows={2}
                     value={currentQ.label || ""}
                     onChange={(e) => updateQuestion(currentQ.id, { label: e.target.value })}
@@ -1049,10 +1562,14 @@ export default function Builder() {
                 </div>
 
                 <div className="flex flex-col gap-2 group">
-                  <label className="font-mono text-[9px] uppercase tracking-widest text-muted group-focus-within:text-ink transition-colors font-bold">Description / Hint</label>
+                  <div className="flex justify-between items-center">
+                    <label className="font-mono text-[9px] uppercase tracking-widest text-muted group-focus-within:text-ink transition-colors font-bold">Description / Hint</label>
+                    {renderFormattingToolbar("description")}
+                  </div>
                   <input 
+                    id="settings-q-desc"
                     type="text"
-                    className="w-full border border-[#0D0D0D]/10 bg-white/60 px-3.5 py-2.5 rounded-xl font-sans text-xs focus:border-ink/40 focus:bg-white focus:shadow-md outline-none transition-all duration-300" 
+                    className="w-full border border-[#0D0D0D]/15 bg-white px-3.5 py-2.5 rounded-xl font-sans text-xs focus:border-ink/40 focus:shadow-md outline-none transition-all duration-300 hover:border-[#0D0D0D]/25 shadow-sm" 
                     placeholder="Optional"
                     value={currentQ.description || ""}
                     onChange={(e) => updateQuestion(currentQ.id, { description: e.target.value })}
@@ -1063,7 +1580,7 @@ export default function Builder() {
                   <label className="font-mono text-[9px] uppercase tracking-widest text-muted group-focus-within:text-ink transition-colors font-bold">Placeholder</label>
                   <input 
                     type="text"
-                    className="w-full border border-[#0D0D0D]/10 bg-white/60 px-3.5 py-2.5 rounded-xl font-sans text-xs focus:border-ink/40 focus:bg-white focus:shadow-md outline-none transition-all duration-300" 
+                    className="w-full border border-[#0D0D0D]/15 bg-white px-3.5 py-2.5 rounded-xl font-sans text-xs focus:border-ink/40 focus:shadow-md outline-none transition-all duration-300 hover:border-[#0D0D0D]/25 shadow-sm" 
                     value={currentQ.placeholder || ""}
                     onChange={(e) => updateQuestion(currentQ.id, { placeholder: e.target.value })}
                   />
@@ -1083,7 +1600,7 @@ export default function Builder() {
                               newOpts[idx] = e.target.value;
                               updateQuestion(currentQ.id, { options: newOpts });
                             }}
-                            className="flex-1 min-w-0 bg-white/60 border border-[#0D0D0D]/10 rounded-xl px-3.5 py-2 text-xs outline-none focus:border-ink/40 focus:bg-white focus:shadow-sm hover:border-[#0D0D0D]/20 transition-all duration-300"
+                            className="flex-1 min-w-0 bg-white border border-[#0D0D0D]/15 rounded-xl px-3.5 py-2 text-xs outline-none focus:border-ink/40 focus:shadow-sm hover:border-[#0D0D0D]/25 transition-all duration-300 shadow-sm"
                           />
                           <button 
                             onClick={() => {
@@ -1170,7 +1687,7 @@ export default function Builder() {
                     <label className="text-[9px] font-mono text-muted uppercase font-bold tracking-widest group-focus-within:text-ink transition-colors">Max Characters</label>
                     <input 
                       type="number"
-                      className="w-full border border-[#0D0D0D]/10 bg-white/60 px-3.5 py-2.5 rounded-xl font-sans text-xs focus:border-ink/40 focus:bg-white focus:shadow-md outline-none transition-all duration-300" 
+                      className="w-full border border-[#0D0D0D]/15 bg-white px-3.5 py-2.5 rounded-xl font-sans text-xs focus:border-ink/40 focus:shadow-md outline-none transition-all duration-300 hover:border-[#0D0D0D]/25 shadow-sm" 
                       value={currentQ.maxChars || ""}
                       onChange={(e) => updateQuestion(currentQ.id, { maxChars: parseInt(e.target.value) || 0 })}
                     />
@@ -1180,20 +1697,14 @@ export default function Builder() {
                     <label className="text-[9px] font-mono text-muted uppercase font-bold tracking-widest group-focus-within:text-ink transition-colors">Button Text</label>
                     <input 
                       type="text"
-                      className="w-full border border-[#0D0D0D]/10 bg-white/60 px-3.5 py-2.5 rounded-xl font-sans text-xs focus:border-ink/40 focus:bg-white focus:shadow-md outline-none transition-all duration-300" 
+                      className="w-full border border-[#0D0D0D]/15 bg-white px-3.5 py-2.5 rounded-xl font-sans text-xs focus:border-ink/40 focus:shadow-md outline-none transition-all duration-300 hover:border-[#0D0D0D]/25 shadow-sm" 
                       value={currentQ.buttonText || ""}
                       onChange={(e) => updateQuestion(currentQ.id, { buttonText: e.target.value })}
                     />
                   </div>
                 </div>
 
-                <div className="pt-5 border-t border-border/60">
-                  <div className="font-mono text-[9px] uppercase tracking-[0.2em] text-muted/65 font-bold mb-3">Advanced</div>
-                  <button className="w-full text-left px-4 py-3 bg-[#F5F2EC] hover:bg-[#EFECE5] rounded-2xl text-xs text-muted hover:text-ink transition-all duration-300 flex items-center justify-between border border-transparent hover:border-[#0D0D0D]/5 shadow-sm hover:shadow active:scale-[0.99]">
-                    <span className="font-medium text-xs">Add Logic / Branching</span>
-                    <Plus className="w-3.5 h-3.5 shrink-0 opacity-60" />
-                  </button>
-                </div>
+
               </div>
           </aside>
         )}
@@ -1205,12 +1716,14 @@ export default function Builder() {
               <button onClick={() => setMode("BUILD")} className="font-mono text-[10px] uppercase tracking-widest text-muted hover:text-ink flex items-center gap-2">
                 ← Back to Editor
               </button>
-              <div className="flex bg-[#F5F3F0] p-1 rounded-md border border-border">
+              <div className="flex bg-[#F5F3F0]/90 backdrop-blur-md p-1 rounded-full border border-border/80 shadow-[inset_0_1px_3px_rgba(0,0,0,0.02)] gap-0.5">
                 <button 
                   onClick={() => setPreviewDevice("desktop")}
                   className={clsx(
-                    "px-4 py-1 text-[10px] uppercase font-mono tracking-widest transition-all",
-                    previewDevice === "desktop" ? "bg-white shadow-sm rounded-sm text-ink" : "text-muted hover:text-ink"
+                    "px-4 py-1.5 rounded-full font-mono text-[9px] uppercase tracking-widest transition-all duration-300 font-bold hover:scale-[1.02] active:scale-[0.98]",
+                    previewDevice === "desktop" 
+                      ? "bg-ink text-canvas shadow-[0_2px_8px_rgba(13,13,13,0.12)] font-extrabold" 
+                      : "text-[#888888] hover:text-ink hover:bg-white/40"
                   )}
                 >
                   Desktop
@@ -1218,8 +1731,10 @@ export default function Builder() {
                 <button 
                   onClick={() => setPreviewDevice("mobile")}
                   className={clsx(
-                    "px-4 py-1 text-[10px] uppercase font-mono tracking-widest transition-all",
-                    previewDevice === "mobile" ? "bg-white shadow-sm rounded-sm text-ink" : "text-muted hover:text-ink"
+                    "px-4 py-1.5 rounded-full font-mono text-[9px] uppercase tracking-widest transition-all duration-300 font-bold hover:scale-[1.02] active:scale-[0.98]",
+                    previewDevice === "mobile" 
+                      ? "bg-ink text-canvas shadow-[0_2px_8px_rgba(13,13,13,0.12)] font-extrabold" 
+                      : "text-[#888888] hover:text-ink hover:bg-white/40"
                   )}
                 >
                   Mobile
@@ -1597,75 +2112,139 @@ export default function Builder() {
 
         {/* COMMAND PALETTE OVERLAY */}
         <AnimatePresence>
-          {isCommandPaletteOpen && (
-            <div className="absolute inset-0 z-50 flex items-center justify-center p-4 bg-canvas/80 backdrop-blur-sm">
-              <motion.div 
-                initial={{ opacity: 0, scale: 0.95, y: 10 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95, y: 10 }}
-                transition={{ duration: 0.2 }}
-                className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-border/50 overflow-hidden flex flex-col max-h-[80vh]"
-              >
-                <div className="flex items-center px-4 py-3 border-b border-border/50 gap-3">
-                  <Search className="w-4 h-4 text-muted" />
-                  <input 
-                    type="text" 
-                    autoFocus
-                    placeholder="Search blocks..." 
-                    value={paletteSearch}
-                    onChange={(e) => setPaletteSearch(e.target.value)}
-                    className="flex-1 bg-transparent outline-none font-sans text-sm placeholder:text-muted/50"
-                  />
-                  <button 
-                    onClick={() => setIsCommandPaletteOpen(false)}
-                    className="p-1 hover:bg-black/5 rounded-md text-muted transition-colors"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
+          {isCommandPaletteOpen && (() => {
+            const flatFiltered = (() => {
+              const list: { id: string; label: string; icon: any }[] = [];
+              blockTypes.forEach(sect => {
+                sect.items.forEach(item => {
+                  if (item.label.toLowerCase().includes(paletteSearch.toLowerCase())) {
+                    list.push(item);
+                  }
+                });
+              });
+              return list;
+            })();
 
-                <div className="flex-1 overflow-y-auto p-2">
-                  {blockTypes.map((section) => {
-                    const filteredItems = section.items.filter(item => 
-                      item.label.toLowerCase().includes(paletteSearch.toLowerCase())
-                    );
-                    
-                    if (filteredItems.length === 0) return null;
+            const handlePaletteKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+              if (flatFiltered.length === 0) return;
 
-                    return (
-                      <div key={section.section} className="mb-4 last:mb-0">
-                        <div className="px-3 py-2 font-mono text-[10px] uppercase tracking-widest text-muted/50">
-                          {section.section}
+              if (e.key === "ArrowDown") {
+                e.preventDefault();
+                setSelectedPaletteIndex(prev => (prev + 1) % flatFiltered.length);
+              } else if (e.key === "ArrowUp") {
+                e.preventDefault();
+                setSelectedPaletteIndex(prev => (prev - 1 + flatFiltered.length) % flatFiltered.length);
+              } else if (e.key === "Enter") {
+                e.preventDefault();
+                const activeItem = flatFiltered[selectedPaletteIndex];
+                if (activeItem) {
+                  addQuestion(activeItem.id, `New ${activeItem.label}`);
+                  setIsCommandPaletteOpen(false);
+                  setPaletteSearch("");
+                }
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                setIsCommandPaletteOpen(false);
+                setPaletteSearch("");
+              }
+            };
+
+            return (
+              <div className="absolute inset-0 z-50 flex items-center justify-center p-4 bg-canvas/80 backdrop-blur-sm">
+                <motion.div 
+                  initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                  transition={{ duration: 0.2 }}
+                  className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-border/50 overflow-hidden flex flex-col max-h-[80vh]"
+                >
+                  <div className="flex items-center px-4 py-3 border-b border-border/50 gap-3">
+                    <Search className="w-4 h-4 text-muted" />
+                    <input 
+                      type="text" 
+                      autoFocus
+                      placeholder="Search blocks..." 
+                      value={paletteSearch}
+                      onChange={(e) => setPaletteSearch(e.target.value)}
+                      onKeyDown={handlePaletteKeyDown}
+                      className="flex-1 bg-transparent outline-none font-sans text-sm placeholder:text-muted/50"
+                    />
+                    <button 
+                      onClick={() => { setIsCommandPaletteOpen(false); setPaletteSearch(""); }}
+                      className="p-1 hover:bg-black/5 rounded-md text-muted transition-colors"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto p-2">
+                    {blockTypes.map((section) => {
+                      const filteredItems = section.items.filter(item => 
+                        item.label.toLowerCase().includes(paletteSearch.toLowerCase())
+                      );
+                      
+                      if (filteredItems.length === 0) return null;
+
+                      return (
+                        <div key={section.section} className="mb-4 last:mb-0">
+                          <div className="px-3 py-2 font-mono text-[10px] uppercase tracking-widest text-muted/50 font-bold">
+                            {section.section}
+                          </div>
+                          <div className="flex flex-col gap-0.5">
+                            {filteredItems.map(item => {
+                              const flatIdx = flatFiltered.findIndex(fi => fi.id === item.id);
+                              const isSelected = flatIdx === selectedPaletteIndex;
+
+                              return (
+                                <button
+                                  key={item.id}
+                                  onClick={() => {
+                                    addQuestion(item.id, `New ${item.label}`);
+                                    setIsCommandPaletteOpen(false);
+                                    setPaletteSearch("");
+                                  }}
+                                  className={clsx(
+                                    "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-left transition-all group cursor-pointer border border-transparent",
+                                    isSelected 
+                                      ? "bg-[#F5F3F0] border-ink/10 font-bold translate-x-1" 
+                                      : "hover:bg-[#F5F3F0]/60"
+                                  )}
+                                >
+                                  <div className={clsx(
+                                    "w-8 h-8 rounded border flex items-center justify-center shadow-sm transition-colors",
+                                    isSelected ? "border-ink/20 bg-ink text-white" : "border-border bg-white"
+                                  )}>
+                                    <item.icon className={clsx(
+                                      "w-4 h-4 transition-colors",
+                                      isSelected ? "text-white" : "text-muted group-hover:text-ink"
+                                    )} />
+                                  </div>
+                                  <div className="flex flex-col flex-1 min-w-0">
+                                    <span className="font-semibold text-ink truncate">{item.label}</span>
+                                    <span className="text-[10px] text-muted truncate">Add a {item.label.toLowerCase()} field</span>
+                                  </div>
+                                  {isSelected && (
+                                    <span className="font-mono text-[9px] bg-ink text-canvas px-1.5 py-0.5 rounded uppercase tracking-wider font-extrabold shadow-sm mr-2 select-none animate-pulse">
+                                      Active
+                                    </span>
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
                         </div>
-                        <div className="flex flex-col gap-0.5">
-                          {filteredItems.map(item => (
-                            <button
-                              key={item.id}
-                              onClick={() => addQuestion(item.id, `New ${item.label}`)}
-                              className="flex items-center gap-3 px-3 py-2.5 hover:bg-[#F5F3F0] rounded-lg text-sm text-left transition-colors group"
-                            >
-                              <div className="w-8 h-8 rounded border border-border bg-white flex items-center justify-center shadow-sm group-hover:border-ink/20 transition-colors">
-                                <item.icon className="w-4 h-4 text-muted group-hover:text-ink transition-colors" />
-                              </div>
-                              <div className="flex flex-col">
-                                <span className="font-medium text-ink">{item.label}</span>
-                                <span className="text-[10px] text-muted">Add a {item.label.toLowerCase()} field</span>
-                              </div>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-                
-                <div className="px-4 py-2 border-t border-border/50 bg-[#F9F9F9] flex justify-between items-center shrink-0">
-                  <span className="text-[10px] text-muted font-mono uppercase tracking-widest">Use ↑↓ to navigate</span>
-                  <span className="text-[10px] text-muted font-mono uppercase tracking-widest">Enter to select</span>
-                </div>
-              </motion.div>
-            </div>
-          )}
+                      );
+                    })}
+                  </div>
+                  
+                  <div className="px-4 py-2 border-t border-border/50 bg-[#F9F9F9] flex justify-between items-center shrink-0">
+                    <span className="text-[10px] text-muted font-mono uppercase tracking-widest font-bold">Use ↑↓ to navigate</span>
+                    <span className="text-[10px] text-muted font-mono uppercase tracking-widest font-bold">Enter to select</span>
+                  </div>
+                </motion.div>
+              </div>
+            );
+          })()}
         </AnimatePresence>
 
         {/* PUBLISH SHARE MODAL */}
@@ -1903,6 +2482,226 @@ export default function Builder() {
                 </div>
               </motion.div>
             </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* FORM SETTINGS DRAWER */}
+        <AnimatePresence>
+          {isFormSettingsOpen && (
+            <div className="fixed inset-0 z-[250] flex justify-end">
+              {/* Overlay Backdrop */}
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setIsFormSettingsOpen(false)}
+                className="absolute inset-0 bg-black/35 backdrop-blur-sm"
+              />
+
+              {/* Drawer Content */}
+              <motion.div
+                initial={{ x: "100%", opacity: 0.95 }}
+                animate={{ x: 0, opacity: 1 }}
+                exit={{ x: "100%", opacity: 0.95 }}
+                transition={{ type: "spring", stiffness: 380, damping: 35 }}
+                className="w-full max-w-md h-full bg-[#FAF8F5] border-l border-border shadow-[0_0_50px_rgba(0,0,0,0.08)] flex flex-col z-10 relative text-ink"
+              >
+                {/* Header */}
+                <div className="p-6 border-b border-border/80 flex items-center justify-between shrink-0 bg-white">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-lg bg-ink/5 flex items-center justify-center">
+                      <Settings className="w-4 h-4 text-ink" />
+                    </div>
+                    <div className="flex flex-col">
+                      <h3 className="font-serif italic text-lg font-bold leading-none">Form Settings</h3>
+                      <span className="font-mono text-[8px] uppercase tracking-widest text-muted mt-1">Configure presets and properties</span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setIsFormSettingsOpen(false)}
+                    className="p-1.5 hover:bg-[#F5F3F0] rounded-xl text-muted hover:text-ink transition-colors"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Body */}
+                <div className="flex-grow overflow-y-auto p-6 space-y-6 premium-scrollbar" data-lenis-prevent="true">
+                  {/* Response Acceptance Section */}
+                  <div className="space-y-4">
+                    <div className="font-mono text-[9px] uppercase tracking-[0.2em] text-muted/65 font-bold border-b border-border/50 pb-2">Response Delivery</div>
+                    
+                    {/* Manual Status Toggle */}
+                    <div className="flex items-center justify-between group">
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-xs font-medium">Accepting Responses</span>
+                        <span className="text-[9px] text-muted uppercase font-mono tracking-wider">Turn submissions on or off</span>
+                      </div>
+                      <button
+                        onClick={() => setAcceptingResponses(!acceptingResponses)}
+                        className={clsx(
+                          "w-9 h-5 rounded-full transition-all duration-300 flex items-center px-0.5 relative outline-none",
+                          acceptingResponses ? "bg-ink" : "bg-[#EAE6DF]"
+                        )}
+                      >
+                        <div className={clsx(
+                          "w-4 h-4 bg-white rounded-full transition-all duration-300 shadow-sm",
+                          acceptingResponses ? "translate-x-4" : "translate-x-0"
+                        )} />
+                      </button>
+                    </div>
+
+                    {/* Scheduled Expiry */}
+                    <div className="flex flex-col gap-2 group">
+                      <label className="font-mono text-[9px] uppercase tracking-widest text-muted font-bold flex items-center gap-1.5">
+                        <Calendar className="w-3 h-3" /> Scheduled Expiry (Close Date)
+                      </label>
+                      <input
+                        type="datetime-local"
+                        value={closeAt}
+                        onChange={(e) => setCloseAt(e.target.value)}
+                        className="w-full border border-border bg-white p-3 rounded-2xl font-sans text-xs focus:border-ink/40 outline-none transition-all"
+                      />
+                    </div>
+
+                    {/* Custom Closed Message */}
+                    <div className="flex flex-col gap-2 group">
+                      <label className="font-mono text-[9px] uppercase tracking-widest text-muted font-bold">Custom Closed Notice</label>
+                      <textarea
+                        value={customClosedMessage}
+                        onChange={(e) => setCustomClosedMessage(e.target.value)}
+                        rows={2}
+                        placeholder="We are no longer accepting submissions..."
+                        className="w-full border border-border bg-white p-3 rounded-2xl font-sans text-xs resize-none focus:border-ink/40 outline-none transition-all"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Access Restrictions Section */}
+                  <div className="space-y-4 pt-4 border-t border-border/60">
+                    <div className="font-mono text-[9px] uppercase tracking-[0.2em] text-muted/65 font-bold border-b border-border/50 pb-2">Access & Spam Control</div>
+                    
+                    {/* Password Protection */}
+                    <div className="flex flex-col gap-2 group">
+                      <label className="font-mono text-[9px] uppercase tracking-widest text-muted font-bold flex items-center gap-1.5">
+                        <Lock className="w-3 h-3" /> Passcode Lock (Optional)
+                      </label>
+                      <input
+                        type="text"
+                        value={passwordProtection}
+                        onChange={(e) => setPasswordProtection(e.target.value)}
+                        placeholder="Leave empty for public access"
+                        className="w-full border border-border bg-white p-3 rounded-2xl font-sans text-xs focus:border-ink/40 outline-none transition-all"
+                      />
+                    </div>
+
+                    {/* Limit to 1 Response per device */}
+                    <div className="flex items-center justify-between group">
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-xs font-medium">Prevent Duplicate Submissions</span>
+                        <span className="text-[9px] text-muted uppercase font-mono tracking-wider">Limit to one response per device</span>
+                      </div>
+                      <button
+                        onClick={() => setOneResponsePerDevice(!oneResponsePerDevice)}
+                        className={clsx(
+                          "w-9 h-5 rounded-full transition-all duration-300 flex items-center px-0.5 relative outline-none",
+                          oneResponsePerDevice ? "bg-ink" : "bg-[#EAE6DF]"
+                        )}
+                      >
+                        <div className={clsx(
+                          "w-4 h-4 bg-white rounded-full transition-all duration-300 shadow-sm",
+                          oneResponsePerDevice ? "translate-x-4" : "translate-x-0"
+                        )} />
+                      </button>
+                    </div>
+
+                    {/* Response Limit */}
+                    <div className="flex flex-col gap-2 group">
+                      <label className="font-mono text-[9px] uppercase tracking-widest text-muted font-bold">Response Cap Limit</label>
+                      <input
+                        type="number"
+                        value={responseLimit}
+                        onChange={(e) => setResponseLimit(e.target.value)}
+                        placeholder="No limit (leave empty)"
+                        min="1"
+                        className="w-full border border-border bg-white p-3 rounded-2xl font-sans text-xs focus:border-ink/40 outline-none transition-all"
+                      />
+                    </div>
+
+                    {/* Allowed Domains */}
+                    <div className="flex flex-col gap-2 group">
+                      <label className="font-mono text-[9px] uppercase tracking-widest text-muted font-bold">Whitelisted Referring Domains</label>
+                      <textarea
+                        value={allowedDomains}
+                        onChange={(e) => setAllowedDomains(e.target.value)}
+                        rows={2}
+                        placeholder="example.com&#10;localhost:3000"
+                        className="w-full border border-border bg-white p-3 rounded-2xl font-sans text-xs resize-none focus:border-ink/40 outline-none transition-all"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Post Submission Section */}
+                  <div className="space-y-4 pt-4 border-t border-border/60">
+                    <div className="font-mono text-[9px] uppercase tracking-[0.2em] text-muted/65 font-bold border-b border-border/50 pb-2">Post Submission</div>
+                    
+                    {/* Completion Redirect URL */}
+                    <div className="flex flex-col gap-2 group">
+                      <label className="font-mono text-[9px] uppercase tracking-widest text-muted font-bold">Redirect URL</label>
+                      <input
+                        type="url"
+                        value={redirectUrl}
+                        onChange={(e) => setRedirectUrl(e.target.value)}
+                        placeholder="https://example.com/thank-you"
+                        className="w-full border border-border bg-white p-3 rounded-2xl font-sans text-xs focus:border-ink/40 outline-none transition-all"
+                      />
+                    </div>
+                  </div>
+
+                  {/* SEO & Metadata Section */}
+                  <div className="space-y-4 pt-4 border-t border-border/60">
+                    <div className="font-mono text-[9px] uppercase tracking-[0.2em] text-muted/65 font-bold border-b border-border/50 pb-2">SEO & Sharing Preview</div>
+                    
+                    {/* SEO Share Title */}
+                    <div className="flex flex-col gap-2 group">
+                      <label className="font-mono text-[9px] uppercase tracking-widest text-muted font-bold">Og:Title / Share Title</label>
+                      <input
+                        type="text"
+                        value={seoTitle}
+                        onChange={(e) => setSeoTitle(e.target.value)}
+                        placeholder="Custom preview title"
+                        className="w-full border border-border bg-white p-3 rounded-2xl font-sans text-xs focus:border-ink/40 outline-none transition-all"
+                      />
+                    </div>
+
+                    {/* SEO Share Description */}
+                    <div className="flex flex-col gap-2 group">
+                      <label className="font-mono text-[9px] uppercase tracking-widest text-muted font-bold">Og:Description / Share Description</label>
+                      <textarea
+                        value={seoDescription}
+                        onChange={(e) => setSeoDescription(e.target.value)}
+                        rows={2}
+                        placeholder="Custom preview description"
+                        className="w-full border border-border bg-white p-3 rounded-2xl font-sans text-xs resize-none focus:border-ink/40 outline-none transition-all"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Footer */}
+                <div className="p-5 mt-auto bg-white border-t border-border/80 flex items-center justify-between shrink-0">
+                  <span className="font-mono text-[9px] uppercase tracking-widest text-muted flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> Auto-saved
+                  </span>
+                  <button
+                    onClick={() => setIsFormSettingsOpen(false)}
+                    className="bg-ink text-canvas font-mono text-[10px] uppercase tracking-widest px-6 py-2.5 rounded-xl hover:bg-ink/90 transition-colors shadow-lg shadow-black/5"
+                  >
+                    Close Settings
+                  </button>
+                </div>
+              </motion.div>
+            </div>
           )}
         </AnimatePresence>
       </main>
