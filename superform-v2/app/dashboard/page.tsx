@@ -348,9 +348,9 @@ export default function Dashboard() {
         </div>
       </header>
 
-      <div className="flex flex-1 relative z-10">
+      <div className="flex flex-grow relative z-10 min-h-0">
         {/* SIDEBAR NAVIGATION */}
-        <aside className="w-[240px] border-r border-[#0D0D0D]/5 bg-white/40 backdrop-blur-xl shrink-0 flex flex-col justify-between transition-all duration-300">
+        <aside className="hidden md:flex w-[240px] border-r border-[#0D0D0D]/5 bg-white/40 backdrop-blur-xl shrink-0 flex-col justify-between transition-all duration-300">
           <div className="p-6">
             <div className="flex items-center gap-3 mb-10 bg-white/60 p-3 rounded-2xl border border-[#0D0D0D]/5 shadow-sm">
               <svg className="w-8 h-8 rounded-xl shrink-0 shadow-sm" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -410,7 +410,7 @@ export default function Dashboard() {
         </aside>
 
         {/* MAIN DASHBOARD */}
-        <main className="flex-1 p-8 lg:p-12 overflow-y-auto premium-scrollbar">
+        <main className="flex-1 p-6 md:p-8 lg:p-12 pb-28 md:pb-8 overflow-y-auto premium-scrollbar">
           <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-[#0D0D0D]/5 pb-4 mb-10 gap-4">
             <div className="flex items-center gap-6">
               <div className="flex flex-col gap-1">
@@ -898,6 +898,29 @@ export default function Dashboard() {
           </motion.div>
         )}
       </AnimatePresence>
+      {/* MOBILE BOTTOM FLOATING NAVIGATION PILL */}
+      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 md:hidden w-[90%] max-w-sm bg-white/90 backdrop-blur-xl border border-[#0D0D0D]/10 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.15)] flex items-center justify-around py-3 px-2">
+        <Link href="/dashboard" className="flex flex-col items-center gap-1.5 text-[8px] font-mono uppercase tracking-widest text-[#0D0D0D] font-bold">
+          <ClipboardList className="w-4 h-4 text-[#0D0D0D]" />
+          <span>Forms</span>
+        </Link>
+        <Link href="/dashboard/aesthetics" className="flex flex-col items-center gap-1.5 text-[8px] font-mono uppercase tracking-widest text-[#888888] hover:text-[#0D0D0D] transition-colors">
+          <Sparkles className="w-4 h-4 text-[#888888]" />
+          <span>Design</span>
+        </Link>
+        <Link href="/dashboard/insights" className="flex flex-col items-center gap-1.5 text-[8px] font-mono uppercase tracking-widest text-[#888888] hover:text-[#0D0D0D] transition-colors">
+          <BookOpen className="w-4 h-4 text-[#888888]" />
+          <span>Insights</span>
+        </Link>
+        <Link href="/dashboard/integrations" className="flex flex-col items-center gap-1.5 text-[8px] font-mono uppercase tracking-widest text-[#888888] hover:text-[#0D0D0D] transition-colors">
+          <Layers className="w-4 h-4 text-[#888888]" />
+          <span>Plugins</span>
+        </Link>
+        <Link href="/dashboard/profile" className="flex flex-col items-center gap-1.5 text-[8px] font-mono uppercase tracking-widest text-[#888888] hover:text-[#0D0D0D] transition-colors">
+          <Settings className="w-4 h-4 text-[#888888]" />
+          <span>Profile</span>
+        </Link>
+      </div>
     </div>
   );
 }

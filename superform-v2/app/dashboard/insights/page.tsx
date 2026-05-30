@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
-import { ArrowLeft, Sparkles, Settings, Eye, Sliders, Palette, BarChart2, TrendingUp, HelpCircle, Newspaper, MessageSquare, AlertCircle } from "lucide-react";
+import { ArrowLeft, Sparkles, Settings, Eye, Sliders, Palette, BarChart2, TrendingUp, HelpCircle, Newspaper, MessageSquare, AlertCircle, ClipboardList, BookOpen, Layers } from "lucide-react";
 import clsx from "clsx";
 
 export default function GlobalInsightsPage() {
@@ -98,9 +98,9 @@ export default function GlobalInsightsPage() {
         </div>
       </header>
 
-      <div className="flex flex-1 relative z-10">
+      <div className="flex flex-1 relative z-10 min-h-0">
         {/* SIDEBAR NAVIGATION */}
-        <aside className="w-[240px] border-r border-[#0D0D0D]/5 bg-white/40 backdrop-blur-xl shrink-0 flex flex-col justify-between transition-all duration-300">
+        <aside className="hidden md:flex w-[240px] border-r border-[#0D0D0D]/5 bg-white/40 backdrop-blur-xl shrink-0 flex-col justify-between transition-all duration-300">
           <div className="p-6">
             <div className="flex items-center gap-3 mb-10 bg-white/60 p-3 rounded-2xl border border-[#0D0D0D]/5 shadow-sm">
               <div className="w-8 h-8 bg-[#0D0D0D] rounded-xl flex items-center justify-center text-[#FAF8F4] font-display text-sm">SF</div>
@@ -150,7 +150,7 @@ export default function GlobalInsightsPage() {
             </div>
           </div>
         ) : (
-          <main className="flex-1 p-6 lg:p-8 overflow-y-auto premium-scrollbar flex justify-center">
+          <main className="flex-1 p-6 lg:p-8 pb-28 md:pb-8 overflow-y-auto premium-scrollbar flex justify-center">
             <div className="max-w-5xl w-full flex flex-col gap-8">
               
               {/* PAGE TITLE */}
@@ -300,6 +300,29 @@ export default function GlobalInsightsPage() {
         )}
       </div>
       <style>{`@keyframes slide-rule{0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}`}</style>
+      {/* MOBILE BOTTOM FLOATING NAVIGATION PILL */}
+      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 md:hidden w-[90%] max-w-sm bg-white/90 backdrop-blur-xl border border-[#0D0D0D]/10 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.15)] flex items-center justify-around py-3 px-2">
+        <Link href="/dashboard" className="flex flex-col items-center gap-1.5 text-[8px] font-mono uppercase tracking-widest text-[#888888] hover:text-[#0D0D0D] transition-colors">
+          <ClipboardList className="w-4 h-4 text-[#888888]" />
+          <span>Forms</span>
+        </Link>
+        <Link href="/dashboard/aesthetics" className="flex flex-col items-center gap-1.5 text-[8px] font-mono uppercase tracking-widest text-[#888888] hover:text-[#0D0D0D] transition-colors">
+          <Sparkles className="w-4 h-4 text-[#888888]" />
+          <span>Design</span>
+        </Link>
+        <Link href="/dashboard/insights" className="flex flex-col items-center gap-1.5 text-[8px] font-mono uppercase tracking-widest text-[#0D0D0D] font-bold">
+          <BookOpen className="w-4 h-4 text-[#0D0D0D]" />
+          <span>Insights</span>
+        </Link>
+        <Link href="/dashboard/integrations" className="flex flex-col items-center gap-1.5 text-[8px] font-mono uppercase tracking-widest text-[#888888] hover:text-[#0D0D0D] transition-colors">
+          <Layers className="w-4 h-4 text-[#888888]" />
+          <span>Plugins</span>
+        </Link>
+        <Link href="/dashboard/profile" className="flex flex-col items-center gap-1.5 text-[8px] font-mono uppercase tracking-widest text-[#888888] hover:text-[#0D0D0D] transition-colors">
+          <Settings className="w-4 h-4 text-[#888888]" />
+          <span>Profile</span>
+        </Link>
+      </div>
     </div>
   );
 }

@@ -1905,7 +1905,7 @@ export default function Builder() {
             <div className="flex-1 overflow-auto p-4 lg:p-8 flex justify-center items-center">
               <div className={clsx(
                 "bg-white shadow-2xl overflow-hidden flex flex-col relative border border-border/20 transition-all duration-500 ease-in-out origin-center",
-                previewDevice === "desktop" ? "w-full max-w-6xl h-[82vh] min-h-[640px] max-h-[780px] rounded-[28px]" : "w-[380px] h-[780px] rounded-[50px] border-[14px] border-[#0D0D0D] relative shadow-2xl flex flex-col overflow-hidden"
+                previewDevice === "desktop" ? "w-full max-w-6xl h-[82vh] min-h-[640px] max-h-[780px] rounded-[28px]" : "w-full max-w-[350px] sm:max-w-[380px] h-[78vh] sm:h-[780px] rounded-[36px] sm:rounded-[50px] border-4 sm:border-[14px] border-[#0D0D0D] relative shadow-2xl flex flex-col overflow-hidden"
               )}>
                 {/* Macbook Header - Only for desktop */}
                 {previewDevice === "desktop" && (
@@ -2090,7 +2090,9 @@ export default function Builder() {
                         currentAesthetic === "Brutalist" && "font-sans font-black uppercase tracking-tighter leading-[0.9]",
                         currentAesthetic === "Cinematic" && "font-serif tracking-[0.05em]",
                         !["Minimal", "Editorial", "Glass", "Brutalist", "Cinematic"].includes(currentAesthetic) && "font-serif italic",
-                        typography === "SM" ? "text-2xl" : typography === "MD" ? "text-4xl" : typography === "LG" ? "text-5xl" : "text-6xl"
+                        previewDevice === "mobile" 
+                          ? (typography === "SM" ? "text-xl" : typography === "MD" ? "text-2xl" : typography === "LG" ? "text-3xl" : "text-4xl")
+                          : (typography === "SM" ? "text-2xl" : typography === "MD" ? "text-4xl" : typography === "LG" ? "text-5xl" : "text-6xl")
                       )}>{currentQ.label}</h2>
                       
                       {currentQ.description && (
