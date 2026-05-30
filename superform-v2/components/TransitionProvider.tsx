@@ -138,9 +138,30 @@ export default function TransitionProvider({ children }: { children: React.React
                   initial={{ y: 30, opacity: 0 }}
                   animate={{ y: 0, opacity: 1 }}
                   transition={{ delay: 0.2, duration: 0.6, ease: [0.215, 0.61, 0.355, 1] }}
-                  className="font-display text-4xl tracking-[0.1em] text-[#0D0D0D] flex items-center gap-3"
+                  className="font-display text-4xl tracking-[0.05em] text-[#0D0D0D] flex items-center gap-3"
                 >
-                  <span className="bg-[#0D0D0D] text-[#FAF8F4] px-2 py-0.5 text-lg leading-none rounded font-sans font-bold">SF</span>
+                  <svg className="w-8 h-8 rounded-[8px] shrink-0 shadow-sm" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <defs>
+                      <linearGradient id="loaderSfGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                        <stop offset="30%" stopColor="#FAF8F4" />
+                        <stop offset="100%" stopColor="#F59E0B" />
+                      </linearGradient>
+                    </defs>
+                    <rect width="32" height="32" rx="8" fill="#0D0D0D"/>
+                    <text 
+                      x="50%" 
+                      y="55%" 
+                      dominantBaseline="middle" 
+                      textAnchor="middle" 
+                      fontFamily="system-ui, -apple-system, sans-serif" 
+                      fontWeight="900" 
+                      fontSize="12" 
+                      fill="url(#loaderSfGrad)" 
+                      letterSpacing="-0.03em"
+                    >
+                      SF
+                    </text>
+                  </svg>
                   <span className="font-serif italic font-bold">Superform</span>
                 </motion.div>
                 <motion.span 
