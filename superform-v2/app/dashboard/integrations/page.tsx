@@ -4,13 +4,32 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
-import { ArrowLeft, Sparkles, Settings, Eye, Sliders, Palette, Layers, Terminal, ToggleLeft, ToggleRight, Check, Copy } from "lucide-react";
+import {
+  ArrowLeft,
+  Sparkles,
+  Settings,
+  Eye,
+  Sliders,
+  Palette,
+  Layers,
+  Terminal,
+  ToggleLeft,
+  ToggleRight,
+  Check,
+  Copy,
+  FileSpreadsheet,
+  ExternalLink,
+  RefreshCw,
+  Database
+} from "lucide-react";
 import clsx from "clsx";
 
 export default function IntegrationsPage() {
   const router = useRouter();
   const [user, setUser] = useState<any>(null); // eslint-disable-line @typescript-eslint/no-explicit-any
   const [loading, setLoading] = useState(true);
+  const [forms, setForms] = useState<any[]>([]);
+  const [selectedFormId, setSelectedFormId] = useState<string>("");
   
   // Embed generator states
   const [selectedEmbedLang, setSelectedEmbedLang] = useState("HTML");
@@ -26,18 +45,59 @@ export default function IntegrationsPage() {
     webhooks: true
   });
 
+  // Google Sheets Action States
+  const [syncingSheet, setSyncingSheet] = useState(false);
+  const [sheetSuccess, setSheetSuccess] = useState<string | null>(null);
+  const [sheetError, setSheetError] = useState<string | null>(null);
+
   useEffect(() => {
-    async function loadUser() {
+    async function loadData() {
+      // 1. Instant cached check to prevent network lag on dashboard render
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        setUser(session.user);
+        
+        const { data: formsData } = await supabase
+          .from('forms')
+          .select('*')
+          .eq('user_id', session.user.id)
+          .order('created_at', { ascending: false });
+
+        if (formsData) {
+          setForms(formsData);
+          if (formsData.length > 0) {
+            setSelectedFormId(formsData[0].id);
+          }
+        }
+        setLoading(false);
+      }
+
+      // 2. Perform background secure session validation
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         router.push("/register?mode=login");
         return;
       }
       setUser(user);
+
+      const { data: formsData } = await supabase
+        .from('forms')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+
+      if (formsData) {
+        setForms(formsData);
+        if (formsData.length > 0) {
+          setSelectedFormId(formsData[0].id);
+        }
+      }
+      
       setLoading(false);
     }
-    loadUser();
+    loadData();
   }, [router]);
+
 
   const toggleConnection = (key: string) => {
     setConnections(prev => ({ ...prev, [key]: !prev[key] }));
@@ -66,6 +126,68 @@ export default function IntegrationsPage() {
     setCopiedCode(true);
     setTimeout(() => setCopiedCode(false), 2000);
   };
+
+  // Google Sheets integration setup triggers
+  const handleConnectGoogle = () => {
+    if (!selectedFormId) return;
+    window.location.href = `/api/integrations/google/auth?formId=${selectedFormId}`;
+  };
+
+
+  const handleCreateSpreadsheet = async () => {
+    if (!selectedFormId) return;
+    setSyncingSheet(true);
+    setSheetSuccess(null);
+    setSheetError(null);
+
+    try {
+      const res = await fetch("/api/integrations/google/sheets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ formId: selectedFormId })
+      });
+
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        throw new Error(data.error || "Failed to create spreadsheet");
+      }
+
+      // Update local forms state to reflect spreadsheet connection
+      setForms(prev => prev.map(f => {
+        if (f.id === selectedFormId) {
+          const updatedQ = [...f.questions];
+          if (updatedQ.length > 0) {
+            const firstQ = updatedQ[0] as any;
+            updatedQ[0] = {
+              ...firstQ,
+              settings: {
+                ...firstQ.settings,
+                google_sheets_spreadsheet_id: data.spreadsheetId,
+                google_sheets_spreadsheet_url: data.spreadsheetUrl,
+                google_sheets_enabled: true
+              }
+            };
+          }
+          return { ...f, questions: updatedQ };
+        }
+        return f;
+      }));
+
+      setSheetSuccess("Google Spreadsheet created and mapped successfully!");
+    } catch (err: any) {
+      setSheetError(err.message || "An unexpected error occurred");
+    } finally {
+      setSyncingSheet(false);
+    }
+  };
+
+  const selectedForm = forms.find(f => f.id === selectedFormId);
+  const firstQ = selectedForm?.questions?.[0] as any;
+  const sheetsSettings = firstQ?.settings || {};
+  const isGoogleConnected = !!sheetsSettings.google_sheets_refresh_token;
+  const isGoogleEnabled = !!sheetsSettings.google_sheets_enabled;
+  const linkedSpreadsheetUrl = sheetsSettings.google_sheets_spreadsheet_url || "";
+  const linkedSpreadsheetEmail = sheetsSettings.google_sheets_email || "";
 
   const getSidebarNavClass = (active: boolean) => clsx(
     "flex items-center gap-3 px-3.5 py-3 rounded-2xl text-[9px] font-mono uppercase tracking-widest transition-all cursor-pointer w-full text-left",
@@ -127,7 +249,7 @@ export default function IntegrationsPage() {
           </div>
 
           <div className="p-6 border-t border-[#0D0D0D]/5 bg-white/20">
-            <Link href="/dashboard/profile" className="flex items-center gap-3 w-full p-2.5 rounded-2xl bg-white/60 hover:bg-white border border-[#0D0D0D]/5 hover:border-[#0D0D0D]/10 hover:shadow-md transition-all duration-300 group">
+            <div className="flex items-center gap-3 w-full p-2.5 rounded-2xl bg-white/60 border border-[#0D0D0D]/5 group">
               <div className="w-8 h-8 rounded-full bg-amber-500/10 text-amber-800 flex items-center justify-center font-mono text-[10px] uppercase font-bold">
                 {user?.email?.charAt(0) || "U"}
               </div>
@@ -137,8 +259,8 @@ export default function IntegrationsPage() {
                 </span>
                 <span className="text-[8px] font-mono text-muted uppercase tracking-widest">Free Plan</span>
               </div>
-              <Settings className="w-3.5 h-3.5 ml-auto text-muted group-hover:text-[#0D0D0D] transition-colors" />
-            </Link>
+              <Settings className="w-3.5 h-3.5 ml-auto text-muted" />
+            </div>
           </div>
         </aside>
 
@@ -287,6 +409,241 @@ export default function IntegrationsPage() {
                   </div>
                 </div>
 
+              </div>
+
+              {/* PREMIUM NATIVE GOOGLE SHEETS CONNECTOR CARD */}
+              <div className="bg-white border-2 border-[#0D0D0D]/10 rounded-3xl p-8 shadow-[0_15px_45px_rgba(13,13,13,0.015)] flex flex-col gap-6 relative overflow-hidden group hover:border-[#0D0D0D] transition-all duration-500">
+                {/* Background Sheets Grid Accent */}
+                <div className="absolute top-0 right-0 w-[30%] h-full opacity-[0.035] pointer-events-none group-hover:scale-105 transition-transform duration-700" 
+                  style={{
+                    backgroundImage: "radial-gradient(#000 1.5px, transparent 1.5px)",
+                    backgroundSize: "20px 20px"
+                  }} 
+                />
+
+                <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-[#0D0D0D]/5 pb-5 gap-4">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-emerald-50 text-emerald-800 rounded-2xl flex items-center justify-center border border-emerald-100 shadow-inner">
+                      <FileSpreadsheet className="w-6 h-6" />
+                    </div>
+                    <div className="flex flex-col">
+                      <h3 className="font-serif italic text-2xl text-[#0D0D0D]">Google Sheets Native Stream</h3>
+                      <p className="font-mono text-[8px] uppercase tracking-widest text-[#888888] mt-0.5">Stream respondent answers into dedicated spreadsheets automatically in real-time</p>
+                    </div>
+                  </div>
+
+                  {/* Form Selector Dropdown */}
+                  <div className="flex flex-col gap-1 w-full md:w-60">
+                    <span className="font-mono text-[7px] uppercase tracking-widest text-[#888888] font-bold">Target Form</span>
+                    <select
+                      value={selectedFormId}
+                      onChange={(e) => {
+                        setSelectedFormId(e.target.value);
+                        setSheetSuccess(null);
+                        setSheetError(null);
+                      }}
+                      className="w-full bg-[#FAF8F4] border border-[#0D0D0D]/10 rounded-xl p-2.5 text-[10px] uppercase font-mono tracking-wider focus:outline-none focus:border-[#0D0D0D] transition-all shadow-sm"
+                    >
+                      {forms.map(f => (
+                        <option key={f.id} value={f.id}>{f.title}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {forms.length === 0 ? (
+                  <div className="py-8 text-center">
+                    <span className="font-mono text-[9px] uppercase tracking-widest text-[#888888]">No forms available to integrate. Create a form first.</span>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+                    
+                    {/* LEFT PANEL: CONFIG CONTROL */}
+                    <div className="lg:col-span-7 flex flex-col gap-6">
+                      
+                      {!isGoogleConnected ? (
+                        <div className="bg-[#FAF8F4]/60 border border-[#0D0D0D]/5 rounded-2xl p-6 flex flex-col gap-4 text-center items-center shadow-inner">
+                          <Database className="w-8 h-8 text-[#888888]/40 mb-1" />
+                          <div className="flex flex-col gap-1">
+                            <span className="font-sans text-xs font-bold text-[#0D0D0D]">Google Account Connection Required</span>
+                            <span className="font-mono text-[8px] uppercase tracking-widest text-[#888888] leading-relaxed max-w-sm">
+                              Authorize Superform to securely link spreadsheets and append submissions automatically on your behalf.
+                            </span>
+                          </div>
+                          
+                          <button
+                            onClick={handleConnectGoogle}
+                            className="bg-[#0D0D0D] hover:bg-emerald-800 text-[#FAF8F4] px-6 py-2.5 font-mono text-[9px] uppercase tracking-widest rounded-xl shadow-md hover:-translate-y-0.5 hover:shadow-lg active:translate-y-0 transition-all cursor-pointer font-bold mt-2"
+                          >
+                            Connect Google Account
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col gap-5">
+                          
+                          {/* Connected Account Banner */}
+                          <div className="flex items-center justify-between bg-emerald-50/40 border border-emerald-100/60 rounded-2xl px-5 py-4">
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-full bg-emerald-600/10 text-emerald-800 flex items-center justify-center font-mono text-[10px] font-bold">G</div>
+                              <div className="flex flex-col">
+                                <span className="text-[10px] font-sans font-bold text-[#0D0D0D]">Google Account Linked</span>
+                                <span className="font-mono text-[8px] uppercase text-emerald-800 font-semibold">{linkedSpreadsheetEmail}</span>
+                              </div>
+                            </div>
+                            <button
+                              onClick={handleConnectGoogle}
+                              className="font-mono text-[8px] uppercase tracking-wider text-[#888888] hover:text-[#0D0D0D] flex items-center gap-1.5 transition-colors cursor-pointer font-bold"
+                            >
+                              <RefreshCw className="w-3 h-3" /> Reconnect
+                            </button>
+                          </div>
+
+                          {/* Link Control */}
+                          {!linkedSpreadsheetUrl ? (
+                            <div className="bg-[#FAF8F4]/60 border border-[#0D0D0D]/5 rounded-2xl p-6 flex flex-col gap-4 text-center items-center shadow-inner">
+                              <Sparkles className="w-7 h-7 text-amber-700 animate-pulse" />
+                              <div className="flex flex-col gap-1">
+                                <span className="font-sans text-xs font-bold text-[#0D0D0D]">Auto-Initialize Spreadsheet</span>
+                                <span className="font-mono text-[8px] uppercase tracking-widest text-[#888888] leading-relaxed max-w-sm">
+                                  Instantly construct a spreadsheet custom-tailored with all response columns preset for this form.
+                                </span>
+                              </div>
+
+                              <button
+                                onClick={handleCreateSpreadsheet}
+                                disabled={syncingSheet}
+                                className={clsx(
+                                  "bg-[#0D0D0D] hover:bg-emerald-800 text-[#FAF8F4] px-6 py-2.5 font-mono text-[9px] uppercase tracking-widest rounded-xl shadow-md transition-all cursor-pointer font-bold mt-2 flex items-center gap-2",
+                                  syncingSheet && "opacity-50 cursor-not-allowed"
+                                )}
+                              >
+                                {syncingSheet ? (
+                                  <>
+                                    <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Constructing Sheet...
+                                  </>
+                                ) : (
+                                  <>
+                                    <Sparkles className="w-3.5 h-3.5" /> Initialize Google Sheet
+                                  </>
+                                )}
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="bg-[#FAF8F4]/40 border border-[#0D0D0D]/5 rounded-2xl p-6 flex flex-col gap-4 shadow-inner">
+                              <div className="flex items-center justify-between border-b border-[#0D0D0D]/5 pb-3">
+                                <div className="flex flex-col">
+                                  <span className="font-sans text-xs font-bold text-[#0D0D0D]">Linked spreadsheet</span>
+                                  <span className="font-mono text-[7px] uppercase tracking-widest text-[#888888] mt-0.5">Sheet ID: {sheetsSettings.google_sheets_spreadsheet_id?.substring(0, 16)}...</span>
+                                </div>
+
+                                <a
+                                  href={linkedSpreadsheetUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="flex items-center gap-1.5 bg-white border border-[#0D0D0D]/10 hover:border-[#0D0D0D] hover:shadow-sm px-4 py-2 font-mono text-[8px] uppercase tracking-wider rounded-xl transition-all font-bold"
+                                >
+                                  Open Spreadsheet <ExternalLink className="w-3 h-3 text-[#888888]" />
+                                </a>
+                              </div>
+
+                              {/* Toggle active sync status */}
+                              <div className="flex items-center justify-between pt-1">
+                                <div className="flex flex-col">
+                                  <span className="font-sans text-xs font-bold text-[#0D0D0D]">Real-Time Streaming Status</span>
+                                  <span className="font-mono text-[7px] uppercase tracking-widest text-[#888888] mt-0.5">Stream submissions instantly upon successful entry</span>
+                                </div>
+
+                                <div className="flex items-center gap-3">
+                                  <span className={clsx(
+                                    "font-mono text-[8px] uppercase tracking-widest font-bold",
+                                    isGoogleEnabled ? "text-emerald-700" : "text-[#888888]"
+                                  )}>
+                                    {isGoogleEnabled ? "Active & Syncing" : "Paused"}
+                                  </span>
+
+                                  <button
+                                    onClick={async () => {
+                                      const updatedQ = [...selectedForm.questions];
+                                      const firstQ = updatedQ[0] as any;
+                                      updatedQ[0] = {
+                                        ...firstQ,
+                                        settings: {
+                                          ...firstQ.settings,
+                                          google_sheets_enabled: !isGoogleEnabled
+                                        }
+                                      };
+
+                                      await supabase
+                                        .from("forms")
+                                        .update({ questions: updatedQ })
+                                        .eq("id", selectedFormId);
+
+                                      setForms(prev => prev.map(f => f.id === selectedFormId ? { ...f, questions: updatedQ } : f));
+                                    }}
+                                    className={clsx(
+                                      "w-10 h-6 rounded-full transition-all duration-300 flex items-center px-0.5 relative outline-none cursor-pointer",
+                                      isGoogleEnabled ? "bg-emerald-700" : "bg-[#EAE6DF]"
+                                    )}
+                                  >
+                                    <div className={clsx(
+                                      "w-5 h-5 bg-white rounded-full transition-all duration-300 shadow-sm",
+                                      isGoogleEnabled ? "translate-x-4.5" : "translate-x-0"
+                                    )} />
+                                  </button>
+                                </div>
+                              </div>
+
+                            </div>
+                          )}
+
+                        </div>
+                      )}
+
+                      {/* Toast Success/Error Notices */}
+                      {sheetSuccess && (
+                        <div className="bg-emerald-50 border border-emerald-100 text-emerald-800 px-4 py-3 rounded-xl font-mono text-[8px] uppercase tracking-widest font-semibold text-center animate-in fade-in duration-300">
+                          {sheetSuccess}
+                        </div>
+                      )}
+                      {sheetError && (
+                        <div className="bg-red-50 border border-red-100 text-red-800 px-4 py-3 rounded-xl font-mono text-[8px] uppercase tracking-widest font-semibold text-center animate-in fade-in duration-300">
+                          {sheetError}
+                        </div>
+                      )}
+
+                    </div>
+
+                    {/* RIGHT PANEL: COLUMN MAPPING SCHEMATIC */}
+                    <div className="lg:col-span-5 border border-[#0D0D0D]/5 bg-[#FAF8F4]/40 rounded-3xl p-6 flex flex-col gap-4 shadow-inner">
+                      <div className="flex items-center gap-2 border-b border-[#0D0D0D]/5 pb-3">
+                        <Database className="w-4 h-4 text-[#888888]" />
+                        <span className="font-mono text-[8px] uppercase tracking-widest text-[#888888] font-bold">Active Column Schematics</span>
+                      </div>
+
+                      <div className="flex flex-col gap-2 max-h-[220px] overflow-y-auto premium-scrollbar pr-1">
+                        <div className="flex justify-between items-center bg-white border border-[#0D0D0D]/5 rounded-xl px-3 py-2 font-mono text-[8px] uppercase tracking-wider">
+                          <span className="text-[#888888] font-bold">Column A</span>
+                          <span className="text-[#0D0D0D] font-bold">Submission ID</span>
+                        </div>
+                        <div className="flex justify-between items-center bg-white border border-[#0D0D0D]/5 rounded-xl px-3 py-2 font-mono text-[8px] uppercase tracking-wider">
+                          <span className="text-[#888888] font-bold">Column B</span>
+                          <span className="text-[#0D0D0D] font-bold">Submitted At</span>
+                        </div>
+
+                        {selectedForm?.questions?.filter((q: any) => q.type !== "section").map((q: any, idx: number) => {
+                          const colLetter = String.fromCharCode(67 + idx); // Start from C (ASCII 67)
+                          return (
+                            <div key={q.id} className="flex justify-between items-center bg-white border border-[#0D0D0D]/5 rounded-xl px-3 py-2 font-mono text-[8px] uppercase tracking-wider">
+                              <span className="text-amber-800 font-bold">Column {colLetter}</span>
+                              <span className="text-[#0D0D0D] font-bold truncate max-w-[140px]">{q.label || `Question ${q.id}`}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                  </div>
+                )}
               </div>
 
             </div>

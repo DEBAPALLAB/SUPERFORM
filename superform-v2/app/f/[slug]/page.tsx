@@ -29,6 +29,7 @@ interface Question {
   options?: string[];
   maxRating?: number;
   logic?: QuestionLogic;
+  imageUrl?: string;
 }
 
 interface FormRow {
@@ -73,6 +74,7 @@ export default function RespondentForm({ params }: { params: Promise<{ slug: str
     html = html.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
     html = html.replace(/\*(.*?)\*/g, "<em>$1</em>");
     html = html.replace(/_(.*?)_/g, "<u>$1</u>");
+    html = html.replace(/\n/g, "<br />");
     html = html.replace(/\[(.*?)\]\((.*?)\)/g, (match, text, url) => {
       const isSafe = !url.trim().toLowerCase().startsWith("javascript:") && !url.trim().toLowerCase().startsWith("data:");
       return `<a href="${isSafe ? url : '#'}" target="_blank" rel="noopener noreferrer" class="underline hover:opacity-85 transition-opacity">${text}</a>`;
@@ -314,7 +316,7 @@ export default function RespondentForm({ params }: { params: Promise<{ slug: str
     if (!currentQ || !form) return;
     const answerVal = answers[currentQ.id] || "";
 
-    if (currentQ.required && !answerVal.trim()) return;
+    if (currentQ.required && currentQ.type !== "cover" && !answerVal.trim()) return;
 
     const updatedAnswers = { ...answers, [currentQ.id]: answerVal };
     setAnswers(updatedAnswers);
@@ -373,6 +375,22 @@ export default function RespondentForm({ params }: { params: Promise<{ slug: str
           const { error: ansError } = await supabase.from("answers").insert(answersToInsert);
           if (ansError) throw ansError;
         }
+
+        // Fire Google Sheets background sync securely
+        try {
+          fetch("/api/integrations/google/sync", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              responseId: rId,
+              formId: form.id,
+              answers: updatedAnswers
+            })
+          });
+        } catch (e) {
+          console.error("Failed to trigger background Google Sheets sync", e);
+        }
+
 
         // Clear draft from localStorage on successful submit
         if (typeof window !== "undefined") {
@@ -761,7 +779,57 @@ export default function RespondentForm({ params }: { params: Promise<{ slug: str
 
                 {/* Input Fields */}
                 <div className="mb-10 mt-6">
-                  {currentQ.type === "section" ? (
+                  {currentQ.type === "cover" ? (
+                    <div className="flex flex-col gap-6 w-full items-start py-8">
+                      {/* Premium Cover Page welcome block */}
+                      <span className="font-mono text-[9px] uppercase tracking-widest opacity-40">FORM INTENT SIGNATURE</span>
+                      <h2 className={clsx(
+                        "leading-tight font-serif text-3xl sm:text-4xl",
+                        aesthetic === "Cinematic" && "italic text-4xl tracking-wide",
+                        aesthetic === "Brutalist" && "font-mono font-black uppercase text-4xl",
+                        aesthetic === "Glass" && "text-3xl",
+                        isDarkTheme ? "text-white" : "text-ink"
+                      )}>
+                        {currentQ.label || "Welcome to Our Form"}
+                      </h2>
+                      {currentQ.placeholder && (
+                        <p className={clsx(
+                          "text-sm leading-relaxed max-w-md opacity-60 font-sans",
+                          isDarkTheme ? "text-white/60" : "text-ink/60"
+                        )}>
+                          {currentQ.placeholder}
+                        </p>
+                      )}
+                      <button
+                        onClick={advance}
+                        className={clsx(
+                          "px-8 py-3.5 text-[9px] font-mono uppercase tracking-widest transition-all shadow-md mt-4 cursor-pointer",
+                          aesthetic === "Minimal" && "bg-[#0D0D0D] text-white rounded-md",
+                          aesthetic === "Editorial" && "bg-[#0D0D0D] text-[#FAF8F4] rounded-full",
+                          aesthetic === "Brutalist" && "bg-white text-black font-black border-2 border-black",
+                          aesthetic === "Cinematic" && "bg-white text-black rounded-xl",
+                          aesthetic === "Glass" && "bg-[#0D0D0D] text-[#FAF8F4] rounded-xl"
+                        )}
+                      >
+                        {currentQ.buttonText || "Start Form"}
+                      </button>
+                    </div>
+                  ) : currentQ.type === "canvas" ? (
+                    <div className="flex flex-col gap-6 w-full items-start">
+                      {currentQ.imageUrl && currentQ.imageUrl.trim() && (
+                        <div className="w-full relative overflow-hidden rounded-3xl border border-border bg-black/5 flex items-center justify-center max-h-[360px] shadow-md select-none mb-6">
+                          <img 
+                            src={currentQ.imageUrl.trim()} 
+                            alt={currentQ.label || "Canvas visual"} 
+                            className="w-full h-full object-cover max-h-[360px] transition-all hover:scale-[1.01] duration-700 animate-in fade-in zoom-in-95 duration-500"
+                            onError={(e) => {
+                              e.currentTarget.style.display = 'none';
+                            }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  ) : currentQ.type === "section" ? (
                     <div className="flex flex-col gap-4 py-4">
                       <button
                         onClick={advance}

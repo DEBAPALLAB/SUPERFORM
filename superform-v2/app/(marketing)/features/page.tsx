@@ -266,14 +266,14 @@ export default function FeaturesPage() {
         
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 w-full max-w-6xl">
           {[
-            { icon: Layout, title: "Visual Logic Studio", desc: "Create branched path questionnaires visually. Specify conditional skips and custom redirection endpoints governed by responses." },
-            { icon: LineChart, title: "Response Analytics Room", desc: "Monitor response streams in real time. Track exact drop-off points, partial answers, and completion rates to optimize copy." },
-            { icon: Layers, title: "Advanced Canvas Options", desc: "Configure film grain overlays, responsive alignments, custom typographic scales (SM to XL), and corner radii." },
-            { icon: ShieldCheck, title: "Row-Level Security (RLS)", desc: "Creator records remain isolated and secure. Respondents have write-only insert streams to ensure zero data leakage." },
-            { icon: Zap, title: "Keystroke Hotkeys", desc: "Full keyboard overrides. Press 'Enter' to advance options, A-D letters for choices, and Y/N for binary questions." },
-            { icon: Heart, title: "Complete White-Labeling", desc: "Remove all 'Built with Superform' branding to deploy sleek, customized, premium visual surveys on your own domains." }
+            { id: "visual-logic-studio", icon: Layout, title: "Visual Logic Studio", desc: "Create branched path questionnaires visually. Specify conditional skips and custom redirection endpoints governed by responses." },
+            { id: "response-analytics-room", icon: LineChart, title: "Response Analytics Room", desc: "Monitor response streams in real time. Track exact drop-off points, partial answers, and completion rates to optimize copy." },
+            { id: "advanced-canvas-options", icon: Layers, title: "Advanced Canvas Options", desc: "Configure film grain overlays, responsive alignments, custom typographic scales (SM to XL), and corner radii." },
+            { id: "row-level-security", icon: ShieldCheck, title: "Row-Level Security (RLS)", desc: "Creator records remain isolated and secure. Respondents have write-only insert streams to ensure zero data leakage." },
+            { id: "keystroke-hotkeys", icon: Zap, title: "Keystroke Hotkeys", desc: "Full keyboard overrides. Press 'Enter' to advance options, A-D letters for choices, and Y/N for binary questions." },
+            { id: "complete-white-labeling", icon: Heart, title: "Complete White-Labeling", desc: "Remove all 'Built with Superform' branding to deploy sleek, customized, premium visual surveys on your own domains." }
           ].map((item, idx) => (
-            <div key={idx} className="p-8 border border-[#E5E5E5] hover:border-ink/20 hover:shadow-md transition-all rounded-2xl flex flex-col gap-5 bg-[#FAF8F4]/30">
+            <div key={idx} id={item.id} className="p-8 border border-[#E5E5E5] hover:border-ink/20 hover:shadow-md transition-all rounded-2xl flex flex-col gap-5 bg-[#FAF8F4]/30 scroll-mt-28">
               <div className="w-10 h-10 rounded-xl bg-white border border-[#E5E5E5] flex items-center justify-center shadow-sm shrink-0">
                 <item.icon className="w-5 h-5 text-ink" />
               </div>

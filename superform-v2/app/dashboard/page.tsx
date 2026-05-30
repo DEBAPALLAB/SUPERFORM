@@ -40,13 +40,34 @@ export default function Dashboard() {
   const [sortOrder, setSortOrder] = useState("Recent");
 
   useEffect(() => {
-    if (typeof window !== "undefined" && window.location.hash && (window.location.hash.includes("access_token") || window.location.hash.includes("id_token"))) {
-      window.history.replaceState(null, "", window.location.pathname + window.location.search);
-    }
+    // Delay clearing the hash so Supabase library has ample time to parse the access token
+    const timer = setTimeout(() => {
+      if (typeof window !== "undefined" && window.location.hash && (window.location.hash.includes("access_token") || window.location.hash.includes("id_token"))) {
+        window.history.replaceState(null, "", window.location.pathname + window.location.search);
+      }
+    }, 800);
+    return () => clearTimeout(timer);
   }, []);
 
   useEffect(() => {
     async function loadData() {
+      // 1. Instant cached check to prevent network lag on dashboard render
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        setUser(session.user);
+        
+        // Load initial forms immediately with cached user credentials
+        const { data: formsData } = await supabase
+          .from('forms')
+          .select('*')
+          .eq('user_id', session.user.id)
+          .order('created_at', { ascending: false });
+
+        if (formsData) setForms(formsData);
+        setIsLoading(false);
+      }
+
+      // 2. Perform secure background verification without blocking UI
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         router.push("/register?mode=login");
@@ -54,7 +75,7 @@ export default function Dashboard() {
       }
       setUser(user);
 
-      const { data: formsData, error } = await supabase
+      const { data: formsData } = await supabase
         .from('forms')
         .select('*')
         .eq('user_id', user.id)
@@ -66,10 +87,22 @@ export default function Dashboard() {
     loadData();
   }, [router]);
 
+
   const [isIntentOpen, setIsIntentOpen] = useState(false);
   const [intentValue, setIntentValue] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [genStep, setGenStep] = useState(0);
+
+  useEffect(() => {
+    if (user) {
+      const savedIntent = localStorage.getItem("superform_intent");
+      if (savedIntent) {
+        setIntentValue(savedIntent);
+        setIsIntentOpen(true);
+        localStorage.removeItem("superform_intent");
+      }
+    }
+  }, [user]);
 
   const genSteps = [
     "Reading your intent...",

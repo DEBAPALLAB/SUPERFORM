@@ -3,7 +3,7 @@
 import { useState, useEffect, use, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Clock, BarChart3, Users, CheckCircle, RefreshCw, X, ClipboardList, TrendingUp, Sparkles, PieChart, Star, Mail, ShieldAlert, Award, FileText, Download, Check, AlertCircle, ChevronLeft, ChevronRight, ChevronDown } from "lucide-react";
+import { ArrowLeft, Clock, BarChart3, Users, CheckCircle, RefreshCw, X, ClipboardList, TrendingUp, Sparkles, PieChart, Star, Mail, ShieldAlert, Award, FileText, Download, Check, AlertCircle, ChevronLeft, ChevronRight, ChevronDown, FileSpreadsheet } from "lucide-react";
 import Link from "next/link";
 import clsx from "clsx";
 
@@ -114,13 +114,19 @@ export default function ResponseRoomPage({ params }: { params: Promise<{ formId:
 
 
   useEffect(() => {
-    if (form?.questions?.[0]) {
-      setSelectedQuestionId(form.questions[0].id);
+    const firstQuestion = form?.questions?.find(q => q.type !== "section" && q.type !== "canvas");
+    if (firstQuestion) {
+      setSelectedQuestionId(firstQuestion.id);
     }
   }, [form]);
 
   // Export states
   const [exportSuccess, setExportSuccess] = useState(false);
+
+  // Google Sheets Auto-Initialization & Sync States
+  const [initializingSheets, setInitializingSheets] = useState(false);
+  const [sheetSuccess, setSheetSuccess] = useState<string | null>(null);
+  const [sheetError, setSheetError] = useState<string | null>(null);
 
   const loadData = async () => {
     setLoading(true);
@@ -182,6 +188,71 @@ export default function ResponseRoomPage({ params }: { params: Promise<{ formId:
     loadData();
   }, [formId]);
 
+  useEffect(() => {
+    async function autoInitSheets() {
+      if (typeof window === "undefined") return;
+      const params = new URLSearchParams(window.location.search);
+      const isAuthSuccess = params.get("google_sheets_auth") === "success";
+      const isAuthError = params.get("google_sheets_auth") === "error";
+      const errMsg = params.get("message");
+
+      if (isAuthError && errMsg) {
+        setSheetError(decodeURIComponent(errMsg));
+        // Clear query params
+        const cleanUrl = window.location.pathname;
+        window.history.replaceState(null, "", cleanUrl);
+        setTimeout(() => setSheetError(null), 4000);
+        return;
+      }
+      
+      if (isAuthSuccess && formId && !initializingSheets) {
+        setInitializingSheets(true);
+        setSheetSuccess("Google Account Connected! Initializing spreadsheet...");
+        setSheetError(null);
+
+        try {
+          const res = await fetch("/api/integrations/google/sheets", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ formId })
+          });
+
+          const data = await res.json();
+          if (!res.ok || data.error) {
+            throw new Error(data.error || "Failed to initialize spreadsheet");
+          }
+
+          setSheetSuccess("Google Sheet synced and initialized successfully! Sync is now active.");
+          
+          // Clear query params elegantly
+          const cleanUrl = window.location.pathname;
+          window.history.replaceState(null, "", cleanUrl);
+          
+          // Reload form data to show linked spreadsheet url instantly!
+          await loadData();
+        } catch (err: any) {
+          setSheetError(err.message || "Spreadsheet setup failed");
+        } finally {
+          setInitializingSheets(false);
+          setTimeout(() => {
+            setSheetSuccess(null);
+            setSheetError(null);
+          }, 4500);
+        }
+      }
+    }
+    
+    if (formId) {
+      autoInitSheets();
+    }
+  }, [formId]);
+
+  const handleConnectSheets = () => {
+    if (typeof window !== "undefined") {
+      window.location.href = `/api/integrations/google/auth?formId=${formId}&redirectTo=responses`;
+    }
+  };
+
   const handleRowClick = async (resp: ResponseRow) => {
     setSelectedResponse(resp);
     setLoadingAnswers(true);
@@ -211,13 +282,15 @@ export default function ResponseRoomPage({ params }: { params: Promise<{ formId:
   const handleExportCSV = () => {
     if (!form || responses.length === 0) return;
 
+    const filteredQs = form.questions.filter(q => q.type !== "section" && q.type !== "canvas");
+
     // Header row
-    const headers = ["Response ID", "Respondent Name", "Started At", "Status", ...form.questions.map(q => `"${q.label.replace(/"/g, '""')}"`)];
+    const headers = ["Response ID", "Respondent Name", "Started At", "Status", ...filteredQs.map(q => `"${q.label.replace(/"/g, '""')}"`)];
     
     // Data rows
     const rows = responses.map((resp, index) => {
       const identifier = getRespondentIdentifier(resp.id, index);
-      const rowAnswers = form.questions.map(q => {
+      const rowAnswers = filteredQs.map(q => {
         const qUuid = `00000000-0000-0000-0000-${String(q.id).padStart(12, '0')}`;
         const ans = allAnswers.find(a => a.response_id === resp.id && (a.question_id === String(q.id) || a.question_id === qUuid));
         return ans ? `"${ans.value.replace(/"/g, '""')}"` : '""';
@@ -351,9 +424,10 @@ export default function ResponseRoomPage({ params }: { params: Promise<{ formId:
     if (!form || !allAnswers.length) return `Respondent #${responses.length - index}`;
     
     const answersForResp = allAnswers.filter(a => a.response_id === respId);
+    const filteredQs = form.questions.filter(q => q.type !== "section" && q.type !== "canvas");
     
     // 1. First pass: look for explicit Name field
-    for (const q of form.questions) {
+    for (const q of filteredQs) {
       const qUuid = `00000000-0000-0000-0000-${String(q.id).padStart(12, '0')}`;
       const ans = answersForResp.find(a => a.question_id === String(q.id) || a.question_id === qUuid);
       if (ans && ans.value.trim()) {
@@ -365,7 +439,7 @@ export default function ResponseRoomPage({ params }: { params: Promise<{ formId:
     }
 
     // 2. Second pass: look for email
-    for (const q of form.questions) {
+    for (const q of filteredQs) {
       const qUuid = `00000000-0000-0000-0000-${String(q.id).padStart(12, '0')}`;
       const ans = answersForResp.find(a => a.question_id === String(q.id) || a.question_id === qUuid);
       if (ans && ans.value.trim()) {
@@ -377,7 +451,7 @@ export default function ResponseRoomPage({ params }: { params: Promise<{ formId:
     }
 
     // 3. Third pass: any short question's first 40 chars
-    for (const q of form.questions) {
+    for (const q of filteredQs) {
       const qUuid = `00000000-0000-0000-0000-${String(q.id).padStart(12, '0')}`;
       const ans = answersForResp.find(a => a.question_id === String(q.id) || a.question_id === qUuid);
       if (ans && ans.value.trim() && q.type === "short") {
@@ -409,8 +483,9 @@ export default function ResponseRoomPage({ params }: { params: Promise<{ formId:
   const getAISynthesisReport = () => {
     if (!form || responses.length === 0) return null;
 
-    const ratingQs = form.questions.filter(q => q.type === "rating");
-    const multipleQs = form.questions.filter(q => q.type === "multiple");
+    const filteredQs = form.questions.filter(q => q.type !== "section" && q.type !== "canvas");
+    const ratingQs = filteredQs.filter(q => q.type === "rating");
+    const multipleQs = filteredQs.filter(q => q.type === "multiple");
 
     let averageRatingStr = "";
     if (ratingQs.length > 0) {
@@ -846,6 +921,10 @@ export default function ResponseRoomPage({ params }: { params: Promise<{ formId:
     );
   };
 
+  const firstQ = form?.questions?.[0] as any;
+  const sheetsSettings = firstQ?.settings || {};
+  const linkedSpreadsheetUrl = sheetsSettings.google_sheets_spreadsheet_url || "";
+
   return (
     <div className="min-h-screen bg-[#FAF8F4] text-[#0D0D0D] flex flex-col font-sans relative">
       {/* Decorative background grid and organic color blobs */}
@@ -872,6 +951,39 @@ export default function ResponseRoomPage({ params }: { params: Promise<{ formId:
         </div>
 
         <div className="flex items-center gap-3">
+          {linkedSpreadsheetUrl ? (
+            <a 
+              href={linkedSpreadsheetUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 px-4 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-full font-mono text-[9px] uppercase tracking-widest transition-all hover:scale-[1.02] active:scale-[0.98] shadow-sm hover:shadow font-bold cursor-pointer"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 shrink-0" />
+              Google Sheets
+            </a>
+          ) : (
+            <button 
+              onClick={handleConnectSheets}
+              disabled={initializingSheets}
+              className={clsx(
+                "flex items-center gap-1.5 px-4 py-2 border rounded-full font-mono text-[9px] uppercase tracking-widest transition-all shadow-sm hover:scale-[1.02] active:scale-[0.98] cursor-pointer font-bold",
+                initializingSheets ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-white border-[#E5E5E5] hover:border-black text-[#0D0D0D]"
+              )}
+            >
+              {initializingSheets ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  Syncing...
+                </>
+              ) : (
+                <>
+                  <FileSpreadsheet className="w-3.5 h-3.5 shrink-0 text-[#888888]" />
+                  Sync to Sheets
+                </>
+              )}
+            </button>
+          )}
+
           {form && responses.length > 0 && (
             <button 
               onClick={handleExportCSV}
@@ -905,6 +1017,18 @@ export default function ResponseRoomPage({ params }: { params: Promise<{ formId:
       ) : (
         <div className="flex-grow flex flex-col p-6 lg:p-8 gap-8 relative z-10">
           
+          {/* Toast Notification Alerts */}
+          {(sheetSuccess || sheetError) && (
+            <div className="w-full max-w-7xl mx-auto -mb-4 animate-in fade-in duration-300">
+              <div className={clsx(
+                "p-4 rounded-2xl font-mono text-[9px] uppercase tracking-widest font-extrabold text-center border shadow-sm",
+                sheetSuccess ? "bg-emerald-50 text-emerald-800 border-emerald-200 animate-pulse" : "bg-red-50 text-red-800 border-red-200"
+              )}>
+                {sheetSuccess || sheetError}
+              </div>
+            </div>
+          )}
+
           {/* STATS OVERVIEW CARDS */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-7xl w-full mx-auto shrink-0">
             <div className="p-6 bg-white border-2 border-[#0D0D0D]/10 rounded-3xl shadow-[0_12px_36px_rgba(13,13,13,0.015)] hover:shadow-[0_20px_50px_rgba(13,13,13,0.04)] hover:-translate-y-0.5 transition-all duration-500 flex flex-col justify-between h-[130px] group">
@@ -998,7 +1122,7 @@ export default function ResponseRoomPage({ params }: { params: Promise<{ formId:
                       </p>
                     </div>
                   ) : (
-                    form?.questions?.map((q, idx) => renderQuestionAnalytics(q, idx))
+                    form?.questions?.filter(q => q.type !== "section" && q.type !== "canvas").map((q, idx) => renderQuestionAnalytics(q, idx))
                   )}
                 </div>
 
@@ -1083,14 +1207,14 @@ export default function ResponseRoomPage({ params }: { params: Promise<{ formId:
                     <h2 className="font-serif italic text-2xl font-bold">Select Question</h2>
                   </div>
 
-                  {form && form.questions && form.questions.length > 0 ? (
+                  {form && form.questions && form.questions.filter(q => q.type !== "section" && q.type !== "canvas").length > 0 ? (
                     <div className="bg-white border-2 border-[#0D0D0D]/10 p-6 rounded-3xl shadow-[0_12px_36px_rgba(13,13,13,0.015)] flex flex-col gap-6">
                       <div className="flex flex-col gap-2">
                         <span className="font-mono text-[8px] uppercase tracking-widest text-[#888888] font-bold">Choose a question</span>
                         <CustomSelect
                           value={selectedQuestionId || ""}
                           onChange={(val) => setSelectedQuestionId(Number(val))}
-                          options={form.questions.map((q, idx) => ({
+                          options={form.questions.filter(q => q.type !== "section" && q.type !== "canvas").map((q, idx) => ({
                             value: q.id,
                             label: `${idx + 1}. ${q.label}`
                           }))}
@@ -1101,31 +1225,40 @@ export default function ResponseRoomPage({ params }: { params: Promise<{ formId:
                       <div className="flex items-center justify-between border-t border-[#E5E5E5] pt-4 mt-2">
                         <span className="font-mono text-[9px] text-[#888888] font-bold">
                           {(() => {
-                            const idx = form.questions.findIndex(q => q.id === selectedQuestionId);
-                            return `${idx + 1} of ${form.questions.length}`;
+                            const filteredQs = form.questions.filter(q => q.type !== "section" && q.type !== "canvas");
+                            const idx = filteredQs.findIndex(q => q.id === selectedQuestionId);
+                            return `${idx + 1} of ${filteredQs.length}`;
                           })()}
                         </span>
                         <div className="flex items-center gap-2">
                           <button
                             onClick={() => {
-                              const idx = form.questions.findIndex(q => q.id === selectedQuestionId);
+                              const filteredQs = form.questions.filter(q => q.type !== "section" && q.type !== "canvas");
+                              const idx = filteredQs.findIndex(q => q.id === selectedQuestionId);
                               if (idx > 0) {
-                                setSelectedQuestionId(form.questions[idx - 1].id);
+                                setSelectedQuestionId(filteredQs[idx - 1].id);
                               }
                             }}
-                            disabled={form.questions.findIndex(q => q.id === selectedQuestionId) === 0}
+                            disabled={(() => {
+                              const filteredQs = form.questions.filter(q => q.type !== "section" && q.type !== "canvas");
+                              return filteredQs.findIndex(q => q.id === selectedQuestionId) === 0;
+                            })()}
                             className="p-2 bg-white border border-[#E5E5E5] rounded-full hover:border-[#0D0D0D] transition-colors disabled:opacity-40 disabled:hover:border-[#E5E5E5] cursor-pointer"
                           >
                             <ChevronLeft className="w-4 h-4" />
                           </button>
                           <button
                             onClick={() => {
-                              const idx = form.questions.findIndex(q => q.id === selectedQuestionId);
-                              if (idx < form.questions.length - 1) {
-                                setSelectedQuestionId(form.questions[idx + 1].id);
+                              const filteredQs = form.questions.filter(q => q.type !== "section" && q.type !== "canvas");
+                              const idx = filteredQs.findIndex(q => q.id === selectedQuestionId);
+                              if (idx < filteredQs.length - 1) {
+                                setSelectedQuestionId(filteredQs[idx + 1].id);
                               }
                             }}
-                            disabled={form.questions.findIndex(q => q.id === selectedQuestionId) === form.questions.length - 1}
+                            disabled={(() => {
+                              const filteredQs = form.questions.filter(q => q.type !== "section" && q.type !== "canvas");
+                              return filteredQs.findIndex(q => q.id === selectedQuestionId) === filteredQs.length - 1;
+                            })()}
                             className="p-2 bg-white border border-[#E5E5E5] rounded-full hover:border-[#0D0D0D] transition-colors disabled:opacity-40 disabled:hover:border-[#E5E5E5] cursor-pointer"
                           >
                             <ChevronRight className="w-4 h-4" />
@@ -1149,8 +1282,9 @@ export default function ResponseRoomPage({ params }: { params: Promise<{ formId:
 
                   {(() => {
                     if (!form || !form.questions) return null;
-                    const selectedIdx = form.questions.findIndex(q => q.id === selectedQuestionId);
-                    const selectedQ = form.questions[selectedIdx];
+                    const filteredQs = form.questions.filter(q => q.type !== "section" && q.type !== "canvas");
+                    const selectedIdx = filteredQs.findIndex(q => q.id === selectedQuestionId);
+                    const selectedQ = filteredQs[selectedIdx];
                     if (!selectedQ) return (
                       <div className="border border-dashed border-[#E5E5E5] rounded-3xl p-12 text-center text-[#888888] bg-white font-mono text-xs">
                         Select a question from the navigator to view metrics.
@@ -1284,7 +1418,7 @@ export default function ResponseRoomPage({ params }: { params: Promise<{ formId:
                         </div>
                       ) : (
                         <div className="flex flex-col gap-6">
-                          {form?.questions?.map((q, idx) => {
+                          {form?.questions?.filter(q => q.type !== "section" && q.type !== "canvas").map((q, idx) => {
                             const qUuid = `00000000-0000-0000-0000-${String(q.id).padStart(12, '0')}`;
                             const ans = selectedAnswers.find((a) => a.question_id === String(q.id) || a.question_id === qUuid);
                             return (
@@ -1318,7 +1452,15 @@ export default function ResponseRoomPage({ params }: { params: Promise<{ formId:
           </div>
         </div>
       )}
+      {/* Floating Pill: Back to Builder */}
+      <Link 
+        href={`/builder/${formId}`}
+        className="fixed bottom-6 left-6 z-[99] flex items-center gap-2 bg-[#0D0D0D] text-[#FAF8F4] hover:bg-amber-800 hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0 px-4 py-2.5 rounded-full font-mono text-[9px] uppercase tracking-widest transition-all duration-300 shadow-md font-bold select-none cursor-pointer"
+      >
+        <ArrowLeft className="w-3.5 h-3.5" /> Back to Builder
+      </Link>
     </div>
   );
 }
+
 

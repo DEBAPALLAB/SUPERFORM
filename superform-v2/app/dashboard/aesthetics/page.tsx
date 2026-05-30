@@ -22,6 +22,14 @@ export default function AestheticLibraryPage() {
 
   useEffect(() => {
     async function loadUser() {
+      // 1. Instant cached check to prevent lock race conditions and network lag
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        setUser(session.user);
+        setLoading(false);
+      }
+
+      // 2. Background secure verification
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         router.push("/register?mode=login");

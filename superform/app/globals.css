@@ -1,0 +1,144 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Cormorant Garamond", serif;
+  --font-editorial: "Cormorant Garamond", serif;
+  --font-mono: "Geist Mono", "DM Mono", monospace;
+}
+
+:root {
+  /* Luminous Minimal Palette */
+  --color-paper: #F9F9F7;
+  --color-canvas: #F2F2EF;
+  --color-ink: #141413;
+  --color-muted: #8C8C85;
+  --color-rule: rgba(20, 20, 19, 0.06);
+  --color-rule-dark: rgba(20, 20, 19, 0.12);
+  --color-accent: #C9A84C;
+  --color-success: #52B788;
+  --color-error: #E63946;
+  
+  /* Geometry */
+  --radius-sm: 8px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+  
+  /* Shadows */
+  --shadow-soft: 0 8px 30px rgba(0,0,0,0.04);
+  --shadow-float: 0 20px 50px rgba(0,0,0,0.08);
+
+  /* Easing */
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out-expo: cubic-bezier(0.87, 0, 0.13, 1);
+  --ease-elastic: cubic-bezier(0.68, -0.6, 0.32, 1.6);
+}
+
+@layer base {
+  body {
+    @apply bg-[var(--color-paper)] text-[var(--color-ink)] antialiased selection:bg-[var(--color-accent)] selection:text-white;
+    font-feature-settings: "ss01", "ss02", "cv01";
+    transition: background-color 0.8s var(--ease-out-expo), color 0.8s var(--ease-out-expo);
+  }
+}
+
+@layer components {
+  .label-caps {
+    @apply font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--color-muted)] font-medium;
+  }
+
+  .btn-primary {
+    @apply font-mono text-[10px] uppercase tracking-widest bg-[var(--color-ink)] text-white px-8 py-3 transition-all duration-500 active:scale-95;
+    transition-timing-function: var(--ease-out-expo);
+    border-radius: var(--radius-sm);
+  }
+  
+  .btn-primary:hover {
+    @apply shadow-[0_10px_40px_rgba(0,0,0,0.15)] -translate-y-0.5;
+  }
+
+  .glass-card {
+    @apply bg-white/70 backdrop-blur-xl border border-white shadow-sm transition-all duration-700;
+    transition-timing-function: var(--ease-out-expo);
+    border-radius: var(--radius-md);
+  }
+
+  .choice-card {
+    @apply flex items-center gap-4 p-4 bg-white border border-[var(--color-rule)] transition-all duration-500 hover:border-[var(--color-muted)] hover:shadow-sm active:scale-[0.98];
+    transition-timing-function: var(--ease-out-expo);
+    border-radius: var(--radius-sm);
+  }
+  
+  .choice-card.selected {
+    @apply border-[var(--color-ink)] bg-[var(--color-ink)] text-white shadow-md;
+  }
+
+  .rating-btn {
+    @apply w-12 h-12 flex items-center justify-center border border-[var(--color-rule)] bg-white font-mono text-sm transition-all duration-500 hover:border-[var(--color-ink)] active:scale-90;
+    transition-timing-function: var(--ease-out-expo);
+    border-radius: var(--radius-sm);
+  }
+  
+  .rating-btn.active {
+    @apply bg-[var(--color-ink)] text-white border-[var(--color-ink)] shadow-md;
+  }
+
+  .dot-grid {
+    background-image: radial-gradient(var(--color-rule-dark) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+}
+
+/* Animations */
+@keyframes slide-in-up {
+  from { opacity: 0; transform: translateY(20px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes slide-in-right {
+  from { opacity: 0; transform: translateX(20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.animate-slide-in {
+  animation: slide-in-up 0.8s var(--ease-out-expo) forwards;
+}
+
+.animate-slide-in-right {
+  animation: slide-in-right 0.8s var(--ease-out-expo) forwards;
+}
+
+.animate-fade-in {
+  animation: fade-in 0.8s var(--ease-out-expo) forwards;
+}
+
+.animate-scale-in {
+  animation: scale-in 0.8s var(--ease-out-expo) forwards;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--color-rule-dark);
+  border-radius: 10px;
+  transition: background 0.3s var(--ease-out-expo);
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--color-muted);
+}

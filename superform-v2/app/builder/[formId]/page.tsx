@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { useState, useEffect, useRef } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-import { Play, Share, Type, AlignLeft, CheckSquare, ToggleLeft, Star, Mail, Phone, Plus, ArrowRight, Search, X, Trash2, ChevronUp, ChevronDown, Copy, Check, ExternalLink, Globe, Link2, Settings, Lock, Eye, EyeOff, Calendar, Ban, Layers } from "lucide-react";
+import { Play, Share, Type, AlignLeft, CheckSquare, ToggleLeft, Star, Mail, Phone, Plus, ArrowRight, Search, X, Trash2, ChevronUp, ChevronDown, Copy, Check, ExternalLink, Globe, Link2, Settings, Lock, Eye, EyeOff, Calendar, Ban, Layers, Layout, Image, BarChart3, BookOpen } from "lucide-react";
 import clsx from "clsx";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -34,6 +34,7 @@ interface Question {
   options?: string[];
   maxRating?: number;
   logic?: QuestionLogic;
+  imageUrl?: string;
 }
 
 interface CustomSelectProps {
@@ -116,6 +117,8 @@ export default function Builder() {
   const [activeQuestion, setActiveQuestion] = useState(1);
   const [collapsedSections, setCollapsedSections] = useState<Record<number, boolean>>({});
   const [isLogicExpanderOpen, setIsLogicExpanderOpen] = useState(false);
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const activeScrubberRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
@@ -175,6 +178,7 @@ export default function Builder() {
     html = html.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
     html = html.replace(/\*(.*?)\*/g, "<em>$1</em>");
     html = html.replace(/_(.*?)_/g, "<u>$1</u>");
+    html = html.replace(/\n/g, "<br />");
     html = html.replace(/\[(.*?)\]\((.*?)\)/g, (match, text, url) => {
       const isSafe = !url.trim().toLowerCase().startsWith("javascript:") && !url.trim().toLowerCase().startsWith("data:");
       return `<a href="${isSafe ? url : '#'}" target="_blank" rel="noopener noreferrer" class="underline hover:opacity-85 transition-opacity">${text}</a>`;
@@ -272,6 +276,7 @@ export default function Builder() {
   const [isSaving, setIsSaving] = useState(false);
   const [hasLoaded, setHasLoaded] = useState(false);
   const { formId } = useParams();
+  const router = useRouter();
 
   // New publishing and metadata states
   const [title, setTitle] = useState("Untitled Form");
@@ -658,6 +663,8 @@ export default function Builder() {
       { id: "phone", label: "Phone Number", icon: Phone },
     ]},
     { section: "Layout", items: [
+      { id: "cover", label: "Cover Page", icon: BookOpen },
+      { id: "canvas", label: "Blank Canvas", icon: Layout },
       { id: "section", label: "Section Break", icon: Layers },
     ]}
   ];
@@ -826,7 +833,48 @@ export default function Builder() {
                             const hasLogic = q.logic && q.logic.rules && q.logic.rules.length > 0;
 
                             return (
-                              <div key={q.id} className="group relative">
+                              <div 
+                                key={q.id} 
+                                draggable
+                                onDragStart={() => setDraggedIndex(originalIdx)}
+                                onDragOver={(e) => {
+                                  e.preventDefault();
+                                  if (dragOverIndex !== originalIdx) {
+                                    setDragOverIndex(originalIdx);
+                                  }
+                                }}
+                                onDragLeave={() => {
+                                  if (dragOverIndex === originalIdx) {
+                                    setDragOverIndex(null);
+                                  }
+                                }}
+                                onDrop={() => {
+                                  if (draggedIndex !== null && draggedIndex !== originalIdx) {
+                                    const reordered = [...questions];
+                                    const [removed] = reordered.splice(draggedIndex, 1);
+                                    reordered.splice(originalIdx, 0, removed);
+                                    setQuestions(reordered);
+                                    
+                                    if (q.id === activeQuestion) {
+                                      setActiveQuestion(q.id);
+                                    }
+                                  }
+                                  setDragOverIndex(null);
+                                }}
+                                onDragEnd={() => {
+                                  setDraggedIndex(null);
+                                  setDragOverIndex(null);
+                                }}
+                                className={clsx(
+                                  "group relative transition-all duration-300",
+                                  draggedIndex === originalIdx ? "opacity-35 scale-[0.97] border-dashed" : "cursor-grab active:cursor-grabbing"
+                                )}
+                              >
+                                {dragOverIndex === originalIdx && draggedIndex !== originalIdx && (
+                                  <div className="absolute -top-1 left-0 right-0 h-0.5 bg-indigo-500 rounded-full z-20 pointer-events-none transition-all duration-200">
+                                    <div className="absolute -left-1.5 -top-[3px] w-2 h-2 bg-indigo-600 rounded-full ring-4 ring-indigo-100" />
+                                  </div>
+                                )}
                                 <button 
                                   onClick={() => setActiveQuestion(q.id)}
                                   className={clsx(
@@ -920,11 +968,11 @@ export default function Builder() {
             
             <div className="p-5 mt-auto bg-[#F5F2EC] border-t border-border/60">
               <button 
-                onClick={() => setMode("PREVIEW")}
-                className="w-full py-3 bg-ink hover:bg-ink/90 text-canvas rounded-2xl text-[10px] font-mono uppercase tracking-[0.15em] font-bold transition-all duration-300 shadow-md hover:shadow-lg active:scale-[0.98] flex items-center justify-center gap-2"
+                onClick={() => router.push(`/responses/${formId}`)}
+                className="w-full py-3 bg-[#FAF8F5] border border-[#0D0D0D]/10 hover:border-black text-[#0D0D0D] rounded-2xl text-[10px] font-mono uppercase tracking-[0.15em] font-bold transition-all duration-300 shadow-sm hover:shadow-md active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer font-semibold"
               >
-                <Play className="w-3.5 h-3.5 fill-canvas text-canvas" />
-                Preview Live Form
+                <BarChart3 className="w-3.5 h-3.5 text-[#0D0D0D]" />
+                View Submissions
               </button>
             </div>
           </aside>
@@ -1080,11 +1128,11 @@ export default function Builder() {
             
             <div className="p-5 mt-auto bg-[#F5F2EC] border-t border-border/60">
               <button 
-                onClick={() => setMode("PREVIEW")}
-                className="w-full py-3 bg-ink hover:bg-ink/90 text-canvas rounded-2xl text-[10px] font-mono uppercase tracking-[0.15em] font-bold transition-all duration-300 shadow-md hover:shadow-lg active:scale-[0.98] flex items-center justify-center gap-2"
+                onClick={() => router.push(`/responses/${formId}`)}
+                className="w-full py-3 bg-[#FAF8F5] border border-[#0D0D0D]/10 hover:border-black text-[#0D0D0D] rounded-2xl text-[10px] font-mono uppercase tracking-[0.15em] font-bold transition-all duration-300 shadow-sm hover:shadow-md active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer font-semibold"
               >
-                <Play className="w-3.5 h-3.5 fill-canvas text-canvas" />
-                Preview Live Form
+                <BarChart3 className="w-3.5 h-3.5 text-[#0D0D0D]" />
+                View Submissions
               </button>
             </div>
           </aside>
@@ -1157,17 +1205,7 @@ export default function Builder() {
                     !["Minimal", "Editorial", "Glass", "Brutalist", "Cinematic"].includes(currentAesthetic) && "font-serif italic",
                     typography === "SM" ? "text-2xl" : typography === "MD" ? "text-4xl" : typography === "LG" ? "text-5xl" : "text-6xl"
                   )}>
-                    {currentAesthetic === "Cinematic" ? currentQ.label.split('').map((char, i) => (
-                      <span 
-                        key={i} 
-                        className={clsx(
-                          "inline-block hover:text-blue-400 transition-colors duration-500",
-                          char === ' ' ? "whitespace-pre" : ""
-                        )}
-                      >
-                        {char}
-                      </span>
-                    )) : renderFormattedText(currentQ.label)}
+                    {renderFormattedText(currentQ.label)}
                   </h2>
                   
                   {currentQ.description && (
@@ -1181,7 +1219,54 @@ export default function Builder() {
                     )}>{renderFormattedText(currentQ.description)}</p>
                   )}
                   
-                  {currentQ.type === "section" ? (
+                  {currentQ.type === "canvas" ? (
+                    <div className="flex flex-col gap-6 w-full items-start">
+                      {currentQ.imageUrl && currentQ.imageUrl.trim() && (
+                        <div className="w-full relative overflow-hidden rounded-3xl border border-border bg-black/5 flex items-center justify-center max-h-[340px] shadow-sm select-none mb-6">
+                          <img 
+                            src={currentQ.imageUrl.trim()} 
+                            alt={currentQ.label || "Canvas visual"} 
+                            className="w-full h-full object-cover max-h-[340px] transition-all hover:scale-[1.02] duration-700"
+                            onError={(e) => {
+                              e.currentTarget.style.display = 'none';
+                            }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  ) : currentQ.type === "cover" ? (
+                    <div className="p-8 lg:p-12 border border-[#E5E5E5]/20 rounded-3xl text-center flex flex-col items-center justify-center gap-6 relative overflow-hidden w-full min-h-[300px]">
+                      {/* Premium Cover Page preview */}
+                      <span className="font-mono text-[9px] uppercase tracking-widest text-[#888888]">FORM COVER BLOCK</span>
+                      <h3 className={clsx(
+                        "leading-tight font-serif text-3xl",
+                        currentAesthetic === "Cinematic" && "italic text-4xl tracking-wide",
+                        currentAesthetic === "Brutalist" && "font-mono font-black uppercase text-4xl",
+                        currentAesthetic === "Glass" && "text-3xl",
+                        isDarkTheme ? "text-white" : "text-ink"
+                      )}>
+                        {currentQ.label || "Welcome to Our Form"}
+                      </h3>
+                      {currentQ.placeholder && (
+                        <p className={clsx(
+                          "text-xs leading-relaxed max-w-md opacity-60 font-sans",
+                          isDarkTheme ? "text-white/60" : "text-ink/60"
+                        )}>
+                          {currentQ.placeholder}
+                        </p>
+                      )}
+                      <button className={clsx(
+                        "px-8 py-3.5 text-[9px] font-mono uppercase tracking-widest transition-all shadow-md mt-4",
+                        currentAesthetic === "Minimal" && "bg-[#0D0D0D] text-white rounded-md",
+                        currentAesthetic === "Editorial" && "bg-[#0D0D0D] text-[#FAF8F4] rounded-full",
+                        currentAesthetic === "Brutalist" && "bg-white text-black font-black border-2 border-black",
+                        currentAesthetic === "Cinematic" && "bg-white text-black rounded-xl",
+                        currentAesthetic === "Glass" && "bg-[#0D0D0D] text-[#FAF8F4] rounded-xl"
+                      )}>
+                        {currentQ.buttonText || "Start Form"}
+                      </button>
+                    </div>
+                  ) : currentQ.type === "section" ? (
                     <div className="p-8 border border-dashed border-border/80 bg-[#FAF8F5]/50 rounded-3xl text-center flex flex-col items-center justify-center gap-4">
                       <Layers className="w-8 h-8 text-muted/60" />
                       <div className="flex flex-col gap-1">
@@ -1566,25 +1651,95 @@ export default function Builder() {
                     <label className="font-mono text-[9px] uppercase tracking-widest text-muted group-focus-within:text-ink transition-colors font-bold">Description / Hint</label>
                     {renderFormattingToolbar("description")}
                   </div>
-                  <input 
+                  <textarea 
                     id="settings-q-desc"
-                    type="text"
-                    className="w-full border border-[#0D0D0D]/15 bg-white px-3.5 py-2.5 rounded-xl font-sans text-xs focus:border-ink/40 focus:shadow-md outline-none transition-all duration-300 hover:border-[#0D0D0D]/25 shadow-sm" 
-                    placeholder="Optional"
+                    className="w-full border border-[#0D0D0D]/15 bg-white p-3 rounded-2xl font-sans text-xs resize-none focus:border-ink/40 focus:shadow-md outline-none transition-all duration-300 hover:border-[#0D0D0D]/25 shadow-sm" 
+                    rows={4}
+                    placeholder="Optional description/subtext"
                     value={currentQ.description || ""}
                     onChange={(e) => updateQuestion(currentQ.id, { description: e.target.value })}
                   />
                 </div>
 
-                <div className="flex flex-col gap-2 group">
-                  <label className="font-mono text-[9px] uppercase tracking-widest text-muted group-focus-within:text-ink transition-colors font-bold">Placeholder</label>
-                  <input 
-                    type="text"
-                    className="w-full border border-[#0D0D0D]/15 bg-white px-3.5 py-2.5 rounded-xl font-sans text-xs focus:border-ink/40 focus:shadow-md outline-none transition-all duration-300 hover:border-[#0D0D0D]/25 shadow-sm" 
-                    value={currentQ.placeholder || ""}
-                    onChange={(e) => updateQuestion(currentQ.id, { placeholder: e.target.value })}
-                  />
-                </div>
+                {currentQ.type === "canvas" && (
+                  <div className="flex flex-col gap-3 group">
+                    <div className="flex flex-col gap-1.5">
+                      <label className="font-mono text-[9px] uppercase tracking-widest text-muted group-focus-within:text-ink transition-colors font-bold">Image Asset</label>
+                      <input 
+                        type="text"
+                        className="w-full border border-[#0D0D0D]/15 bg-white px-3.5 py-2.5 rounded-xl font-sans text-xs focus:border-ink/40 focus:shadow-md outline-none transition-all duration-300 hover:border-[#0D0D0D]/25 shadow-sm" 
+                        placeholder="Paste image URL (https://...)"
+                        value={currentQ.imageUrl || ""}
+                        onChange={(e) => updateQuestion(currentQ.id, { imageUrl: e.target.value })}
+                      />
+                    </div>
+                    
+                    <div className="flex flex-col gap-1.5">
+                      <span className="font-mono text-[8px] uppercase tracking-widest text-muted font-bold">Or upload local image</span>
+                      <input 
+                        type="file" 
+                        accept="image/*"
+                        id="canvas-image-upload"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            const reader = new FileReader();
+                            reader.onloadend = () => {
+                              const img = new window.Image();
+                              img.onload = () => {
+                                const canvas = document.createElement("canvas");
+                                const maxDim = 1000;
+                                let w = img.width;
+                                let h = img.height;
+                                if (w > maxDim || h > maxDim) {
+                                  if (w > h) {
+                                    h = Math.round((h * maxDim) / w);
+                                    w = maxDim;
+                                  } else {
+                                    w = Math.round((w * maxDim) / h);
+                                    h = maxDim;
+                                  }
+                                }
+                                canvas.width = w;
+                                canvas.height = h;
+                                const ctx = canvas.getContext("2d");
+                                if (ctx) {
+                                  ctx.drawImage(img, 0, 0, w, h);
+                                  const compressedBase64 = canvas.toDataURL("image/jpeg", 0.75); // compress to JPEG at 75% quality
+                                  updateQuestion(currentQ.id, { imageUrl: compressedBase64 });
+                                }
+                              };
+                              img.src = reader.result as string;
+                            };
+                            reader.readAsDataURL(file);
+                          }
+                        }}
+                      />
+                      <label 
+                        htmlFor="canvas-image-upload" 
+                        className="w-full border border-dashed border-[#0D0D0D]/15 bg-[#FAF8F5]/50 hover:bg-white hover:border-[#0D0D0D] p-3 rounded-2xl flex flex-col items-center justify-center gap-1 cursor-pointer transition-all duration-300 shadow-sm group"
+                      >
+                        <Image className="w-4 h-4 text-muted group-hover:text-ink transition-colors" />
+                        <span className="font-mono text-[8px] uppercase tracking-widest text-muted group-hover:text-ink transition-colors">Choose local file</span>
+                      </label>
+                    </div>
+                  </div>
+                )}
+
+                {currentQ.type !== "canvas" && currentQ.type !== "section" && (
+                  <div className="flex flex-col gap-2 group">
+                    <label className="font-mono text-[9px] uppercase tracking-widest text-muted group-focus-within:text-ink transition-colors font-bold">
+                      {currentQ.type === "cover" ? "Description" : "Placeholder"}
+                    </label>
+                    <input 
+                      type="text"
+                      className="w-full border border-[#0D0D0D]/15 bg-white px-3.5 py-2.5 rounded-xl font-sans text-xs focus:border-ink/40 focus:shadow-md outline-none transition-all duration-300 hover:border-[#0D0D0D]/25 shadow-sm" 
+                      value={currentQ.placeholder || ""}
+                      onChange={(e) => updateQuestion(currentQ.id, { placeholder: e.target.value })}
+                    />
+                  </div>
+                )}
 
                 {currentQ.type === "multiple" && (
                   <div className="flex flex-col gap-2">
@@ -1667,31 +1822,35 @@ export default function Builder() {
                     </label>
                   )}
 
-                  <label className="flex items-center justify-between cursor-pointer group">
-                    <span className="text-xs font-sans text-ink font-medium">Required Field</span>
-                    <button 
-                      onClick={() => updateQuestion(currentQ.id, { required: !currentQ.required })}
-                      className={clsx(
-                        "w-9 h-5 rounded-full transition-all duration-300 flex items-center px-0.5 relative outline-none",
-                        currentQ.required ? "bg-ink" : "bg-[#EAE6DF]"
-                      )}
-                    >
-                      <div className={clsx(
-                        "w-4 h-4 bg-white rounded-full transition-all duration-300 shadow-sm",
-                        currentQ.required ? "translate-x-4" : "translate-x-0"
-                      )} />
-                    </button>
-                  </label>
+                  {currentQ.type !== "canvas" && currentQ.type !== "section" && currentQ.type !== "cover" && (
+                    <label className="flex items-center justify-between cursor-pointer group">
+                      <span className="text-xs font-sans text-ink font-medium">Required Field</span>
+                      <button 
+                        onClick={() => updateQuestion(currentQ.id, { required: !currentQ.required })}
+                        className={clsx(
+                          "w-9 h-5 rounded-full transition-all duration-300 flex items-center px-0.5 relative outline-none",
+                          currentQ.required ? "bg-ink" : "bg-[#EAE6DF]"
+                        )}
+                      >
+                        <div className={clsx(
+                          "w-4 h-4 bg-white rounded-full transition-all duration-300 shadow-sm",
+                          currentQ.required ? "translate-x-4" : "translate-x-0"
+                        )} />
+                      </button>
+                    </label>
+                  )}
 
-                  <div className="flex flex-col gap-2 group">
-                    <label className="text-[9px] font-mono text-muted uppercase font-bold tracking-widest group-focus-within:text-ink transition-colors">Max Characters</label>
-                    <input 
-                      type="number"
-                      className="w-full border border-[#0D0D0D]/15 bg-white px-3.5 py-2.5 rounded-xl font-sans text-xs focus:border-ink/40 focus:shadow-md outline-none transition-all duration-300 hover:border-[#0D0D0D]/25 shadow-sm" 
-                      value={currentQ.maxChars || ""}
-                      onChange={(e) => updateQuestion(currentQ.id, { maxChars: parseInt(e.target.value) || 0 })}
-                    />
-                  </div>
+                  {currentQ.type !== "canvas" && currentQ.type !== "section" && currentQ.type !== "multiple" && currentQ.type !== "rating" && currentQ.type !== "yesno" && (
+                    <div className="flex flex-col gap-2 group">
+                      <label className="text-[9px] font-mono text-muted uppercase font-bold tracking-widest group-focus-within:text-ink transition-colors">Max Characters</label>
+                      <input 
+                        type="number"
+                        className="w-full border border-[#0D0D0D]/15 bg-white px-3.5 py-2.5 rounded-xl font-sans text-xs focus:border-ink/40 focus:shadow-md outline-none transition-all duration-300 hover:border-[#0D0D0D]/25 shadow-sm" 
+                        value={currentQ.maxChars || ""}
+                        onChange={(e) => updateQuestion(currentQ.id, { maxChars: parseInt(e.target.value) || 0 })}
+                      />
+                    </div>
+                  )}
 
                   <div className="flex flex-col gap-2 group">
                     <label className="text-[9px] font-mono text-muted uppercase font-bold tracking-widest group-focus-within:text-ink transition-colors">Button Text</label>

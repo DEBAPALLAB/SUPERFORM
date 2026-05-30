@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, Suspense } from "react";
+import { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
 import { ArrowRight, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -17,6 +17,16 @@ function RegisterContent() {
   const [fullName, setFullName] = useState(""); // Only used for signup visually here
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    async function checkSession() {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        router.replace("/dashboard");
+      }
+    }
+    checkSession();
+  }, [router]);
 
   const submit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();

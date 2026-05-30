@@ -2,15 +2,18 @@
 
 import Link from "next/link";
 import TransitionLink from "@/components/TransitionLink";
-import { ArrowRight, Sparkles, Layout, LineChart, Layers, RefreshCw } from "lucide-react";
-import { useState, useEffect } from "react";
+import { ArrowRight, Sparkles, Layout, LineChart, Layers, RefreshCw, ChevronLeft, ChevronRight } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import clsx from "clsx";
 import { useRouter } from "next/navigation";
 import { usePageTransition } from "@/components/TransitionProvider";
+import { supabase } from "@/lib/supabase";
+import type { User } from "@supabase/supabase-js";
 
 type Aesthetic = "Minimal" | "Editorial" | "Brutalist" | "Cinematic" | "Glass";
 type Transition = "Slide" | "Fade" | "Zoom" | "Flip";
+const ROTATING_WORDS = ["EXPERIENCE", "COGNITION", "CONVERSATION", "IDENTITY"];
 
 export default function Home() {
   const router = useRouter();
@@ -18,24 +21,45 @@ export default function Home() {
   const [activeAesthetic, setActiveAesthetic] = useState<Aesthetic>("Editorial");
   const [activeTransition, setActiveTransition] = useState<Transition>("Slide");
   const [transitionTick, setTransitionTick] = useState(0);
+  const [user, setUser] = useState<User | null>(null);
+
+  // Showcase Slider Scroll Handler
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const scroll = (direction: "left" | "right") => {
+    if (scrollRef.current) {
+      const { scrollLeft } = scrollRef.current;
+      const scrollTo = direction === "left" ? scrollLeft - 360 : scrollLeft + 360;
+      scrollRef.current.scrollTo({ left: scrollTo, behavior: "smooth" });
+    }
+  };
 
   // Immersive Hero States
   const [heroIntent, setHeroIntent] = useState("");
   const [heroAesthetic, setHeroAesthetic] = useState<Aesthetic>("Editorial");
   const [rotatingWordIdx, setRotatingWordIdx] = useState(0);
-  const rotatingWords = ["EXPERIENCE", "COGNITION", "CONVERSATION", "IDENTITY"];
 
   const [mockOpinion, setMockOpinion] = useState("");
   const [showDemoSuccess, setShowDemoSuccess] = useState(false);
 
   useEffect(() => {
-    setMockOpinion("");
-    setShowDemoSuccess(false);
-  }, [heroAesthetic]);
+    async function checkUser() {
+      const { data: { user } } = await supabase.auth.getUser();
+      setUser(user);
+    }
+    checkUser();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
 
   useEffect(() => {
     const interval = setInterval(() => {
-      setRotatingWordIdx((prev) => (prev + 1) % rotatingWords.length);
+      setRotatingWordIdx((prev) => (prev + 1) % ROTATING_WORDS.length);
     }, 2800);
     return () => clearInterval(interval);
   }, []);
@@ -44,7 +68,11 @@ export default function Home() {
     e.preventDefault();
     if (!heroIntent.trim()) return;
     localStorage.setItem("superform_intent", heroIntent);
-    navigateTo("/register");
+    if (user) {
+      navigateTo("/dashboard");
+    } else {
+      navigateTo("/register");
+    }
   };
 
   const handleDemoSubmit = (e: React.FormEvent) => {
@@ -119,7 +147,7 @@ export default function Home() {
                     transition={{ type: "spring", stiffness: 220, damping: 18 }}
                     className="text-amber-600 font-serif italic tracking-normal lowercase first-letter:uppercase inline-block"
                   >
-                    {rotatingWords[rotatingWordIdx].toLowerCase()}.
+                    {ROTATING_WORDS[rotatingWordIdx].toLowerCase()}.
                   </motion.span>
                 </AnimatePresence>
               </span>
@@ -151,10 +179,18 @@ export default function Home() {
                 </div>
               </div>
               <div className="mt-3.5 text-left font-mono text-[9px] text-[#888888] uppercase tracking-widest pl-2">
-                Already have an account?{" "}
-                <Link href="/register?mode=login" className="text-[#0D0D0D] font-bold hover:underline">
-                  Log In →
-                </Link>
+                {user ? (
+                  <Link href="/dashboard" className="text-[#0D0D0D] font-bold hover:underline">
+                    Go to Dashboard →
+                  </Link>
+                ) : (
+                  <>
+                    Already have an account?{" "}
+                    <Link href="/register?mode=login" className="text-[#0D0D0D] font-bold hover:underline">
+                      Log In →
+                    </Link>
+                  </>
+                )}
               </div>
             </form>
 
@@ -173,10 +209,14 @@ export default function Home() {
             {/* Morph Style Swapper Tabs */}
             <div className="flex bg-[#F5F3F0] p-1 rounded-full border border-[#E5E5E5] mb-6 relative z-20 shrink-0 w-full max-w-lg md:max-w-xl justify-between shadow-sm">
               {(["Minimal", "Editorial", "Brutalist", "Cinematic", "Glass"] as Aesthetic[]).map((aes) => (
-                <button
-                  key={aes}
-                  onClick={() => setHeroAesthetic(aes)}
-                  className={clsx(
+              <button
+                key={aes}
+                onClick={() => {
+                  setHeroAesthetic(aes);
+                  setMockOpinion("");
+                  setShowDemoSuccess(false);
+                }}
+                className={clsx(
                     "px-3 py-1.5 text-[9px] uppercase font-mono tracking-widest rounded-full transition-all shrink-0 cursor-pointer",
                     heroAesthetic === aes 
                       ? "bg-[#0D0D0D] text-[#FAF8F4] font-bold shadow-sm" 
@@ -557,7 +597,7 @@ export default function Home() {
 
       {/* 5. 3-COLUMN CORE CAPABILITIES */}
       <section className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-[#E5E5E5] border-b border-[#E5E5E5] bg-white">
-        <div className="p-8 lg:p-16 flex flex-col gap-6 group hover:bg-[#FAF8F4]/40 transition-all duration-500 cursor-pointer">
+        <div className="p-8 lg:p-16 flex flex-col gap-6 group hover:bg-[#FAF8F4]/40 transition-all duration-500">
           <div className="w-12 h-12 bg-[#FAF8F4] rounded-xl border border-[#E5E5E5] flex items-center justify-center shadow-sm group-hover:bg-[#F59E0B]/10 group-hover:border-[#F59E0B]/30 group-hover:scale-105 transition-all duration-300">
             <Layout className="w-6 h-6 text-[#0D0D0D] group-hover:text-[#F59E0B] transition-colors duration-300" />
           </div>
@@ -565,12 +605,15 @@ export default function Home() {
           <p className="font-sans text-sm text-[#888888] leading-relaxed">
             Create branched path questionnaires visually. Specify conditional skips and custom redirection endpoints governed by respondent answers effortlessly.
           </p>
-          <div className="mt-4 font-mono text-[9px] uppercase tracking-widest text-[#888888] group-hover:text-[#0D0D0D] transition-colors flex items-center gap-1.5">
+          <Link
+            href="/features#visual-logic-studio"
+            className="mt-4 font-mono text-[9px] uppercase tracking-widest text-[#888888] group-hover:text-[#0D0D0D] transition-colors flex items-center gap-1.5 w-fit focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0D0D0D] focus-visible:ring-offset-4 rounded-sm"
+          >
             Learn More <ArrowRight className="w-3 h-3 group-hover:translate-x-1 transition-transform" />
-          </div>
+          </Link>
         </div>
 
-        <div className="p-8 lg:p-16 flex flex-col gap-6 group hover:bg-[#FAF8F4]/40 transition-all duration-500 cursor-pointer">
+        <div className="p-8 lg:p-16 flex flex-col gap-6 group hover:bg-[#FAF8F4]/40 transition-all duration-500">
           <div className="w-12 h-12 bg-[#FAF8F4] rounded-xl border border-[#E5E5E5] flex items-center justify-center shadow-sm group-hover:bg-[#F59E0B]/10 group-hover:border-[#F59E0B]/30 group-hover:scale-105 transition-all duration-300">
             <LineChart className="w-6 h-6 text-[#0D0D0D] group-hover:text-[#F59E0B] transition-colors duration-300" />
           </div>
@@ -578,12 +621,15 @@ export default function Home() {
           <p className="font-sans text-sm text-[#888888] leading-relaxed">
             Monitor response streams in real time. Track exact drop-off points, partial answers, and completion rates to optimize your copy.
           </p>
-          <div className="mt-4 font-mono text-[9px] uppercase tracking-widest text-[#888888] group-hover:text-[#0D0D0D] transition-colors flex items-center gap-1.5">
+          <Link
+            href="/features#response-analytics-room"
+            className="mt-4 font-mono text-[9px] uppercase tracking-widest text-[#888888] group-hover:text-[#0D0D0D] transition-colors flex items-center gap-1.5 w-fit focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0D0D0D] focus-visible:ring-offset-4 rounded-sm"
+          >
             Learn More <ArrowRight className="w-3 h-3 group-hover:translate-x-1 transition-transform" />
-          </div>
+          </Link>
         </div>
 
-        <div className="p-8 lg:p-16 flex flex-col gap-6 group hover:bg-[#FAF8F4]/40 transition-all duration-500 cursor-pointer">
+        <div className="p-8 lg:p-16 flex flex-col gap-6 group hover:bg-[#FAF8F4]/40 transition-all duration-500">
           <div className="w-12 h-12 bg-[#FAF8F4] rounded-xl border border-[#E5E5E5] flex items-center justify-center shadow-sm group-hover:bg-[#F59E0B]/10 group-hover:border-[#F59E0B]/30 group-hover:scale-105 transition-all duration-300">
             <Layers className="w-6 h-6 text-[#0D0D0D] group-hover:text-[#F59E0B] transition-colors duration-300" />
           </div>
@@ -591,13 +637,15 @@ export default function Home() {
           <p className="font-sans text-sm text-[#888888] leading-relaxed">
             Configure film grain overlays, responsive layout alignments, custom typographic scales (SM to XL), and corner radii presets seamlessly.
           </p>
-          <div className="mt-4 font-mono text-[9px] uppercase tracking-widest text-[#888888] group-hover:text-[#0D0D0D] transition-colors flex items-center gap-1.5">
+          <Link
+            href="/features#advanced-canvas-options"
+            className="mt-4 font-mono text-[9px] uppercase tracking-widest text-[#888888] group-hover:text-[#0D0D0D] transition-colors flex items-center gap-1.5 w-fit focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0D0D0D] focus-visible:ring-offset-4 rounded-sm"
+          >
             Learn More <ArrowRight className="w-3 h-3 group-hover:translate-x-1 transition-transform" />
-          </div>
+          </Link>
         </div>
       </section>
 
-      {/* 6. SHOWCASE TEASER */}
       <section className="bg-[#0D0D0D] text-[#FAF8F4] py-24 flex flex-col gap-16 overflow-hidden relative">
         {/* Soft Warm Backdrop Light */}
         <div className="absolute top-0 right-[-10%] w-[60%] h-[100%] bg-amber-500/[0.02] rounded-full blur-[130px] pointer-events-none" />
@@ -606,28 +654,130 @@ export default function Home() {
           FORMS THAT MAKE AN IMPRESSION
         </h2>
         
-        <div className="flex gap-8 px-6 lg:px-16 overflow-x-auto pb-8 snap-x no-scrollbar max-w-7xl mx-auto w-full">
-          {/* Showcase exhibition highlights */}
+        <div className="relative max-w-7xl mx-auto w-full group/slider overflow-hidden px-4">
+          {/* Scroll Navigation Arrows */}
+          <button 
+            onClick={() => scroll("left")}
+            className="absolute left-6 top-1/2 -translate-y-1/2 z-20 w-11 h-11 rounded-full bg-white/10 hover:bg-white/20 border border-white/10 flex items-center justify-center transition-all duration-300 text-white active:scale-95 shadow-lg backdrop-blur-md cursor-pointer opacity-100 lg:opacity-0 lg:group-hover/slider:opacity-100"
+            aria-label="Scroll Left"
+          >
+            <ChevronLeft className="w-5 h-5" />
+          </button>
+          
+          <button 
+            onClick={() => scroll("right")}
+            className="absolute right-6 top-1/2 -translate-y-1/2 z-20 w-11 h-11 rounded-full bg-white/10 hover:bg-white/20 border border-white/10 flex items-center justify-center transition-all duration-300 text-white active:scale-95 shadow-lg backdrop-blur-md cursor-pointer opacity-100 lg:opacity-0 lg:group-hover/slider:opacity-100"
+            aria-label="Scroll Right"
+          >
+            <ChevronRight className="w-5 h-5" />
+          </button>
+
+          {/* Left & Right Edge Fades */}
+          <div className="absolute left-0 top-0 bottom-0 w-24 bg-gradient-to-r from-[#0D0D0D] to-transparent pointer-events-none z-10" />
+          <div className="absolute right-0 top-0 bottom-0 w-24 bg-gradient-to-l from-[#0D0D0D] to-transparent pointer-events-none z-10" />
+
+          <div 
+            ref={scrollRef}
+            className="flex gap-8 overflow-x-auto pb-8 snap-x no-scrollbar w-full scroll-smooth pl-16 pr-16"
+          >
           {[
-            { name: "Lucid Tech Waitlist", style: "Cinematic Mode" },
-            { name: "Editorial Studio Circular", style: "Editorial Serif" },
-            { name: "Brutalist Developer Grid", style: "Raw Monospace" },
-            { name: "Liquid Sheen Application", style: "Glass Sheen" }
+            { 
+              name: "Lucid Tech Waitlist", 
+              style: "Cinematic Mode",
+              desc: "A wide-screen, luxury layout designed to capture premium leads with high-fidelity cinematic styling.",
+              preview: (
+                <div className="w-full h-full flex flex-col justify-end p-6 bg-gradient-to-b from-transparent to-black/85 relative overflow-hidden font-serif">
+                  <div className="absolute top-4 right-4 px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 font-mono text-[7px] text-amber-500 uppercase tracking-widest">
+                    Cinematic
+                  </div>
+                  <span className="font-mono text-[8px] text-amber-500/80 tracking-[0.2em] mb-1">PREMIUM EXHIBITION</span>
+                  <div className="text-lg font-light text-[#FAF8F4] italic leading-tight mb-2">Lucid Tech Waitlist</div>
+                  <div className="w-full h-[1px] bg-white/20 mb-3" />
+                  <div className="text-[10px] text-white/50 font-sans tracking-wide">Enter the next dimension of waitlist design →</div>
+                </div>
+              )
+            },
+            { 
+              name: "Editorial Studio Circular", 
+              style: "Editorial Serif",
+              desc: "Elegant serif typography paired with classic margins, creating a highly sophisticated editorial atmosphere.",
+              preview: (
+                <div className="w-full h-full flex flex-col justify-end p-6 bg-gradient-to-b from-transparent to-[#FAF8F4] relative overflow-hidden font-serif text-[#0d0d0d]">
+                  <div className="absolute top-4 right-4 px-2 py-0.5 rounded-full bg-[#0d0d0d]/10 border border-[#0d0d0d]/30 font-mono text-[7px] uppercase tracking-widest">
+                    Editorial
+                  </div>
+                  <span className="font-mono text-[8px] text-[#0d0d0d]/50 tracking-wider mb-1">COLLECTION NO. 02</span>
+                  <div className="text-lg font-bold italic leading-tight mb-2">Editorial Studio Circular</div>
+                  <div className="w-full h-[1px] bg-[#0d0d0d]/15 mb-3" />
+                  <div className="text-[10px] text-[#0d0d0d]/60 font-sans tracking-wide">Timeless elegance, built for designers →</div>
+                </div>
+              )
+            },
+            { 
+              name: "Brutalist Developer Grid", 
+              style: "Raw Monospace",
+              desc: "High-contrast layouts, heavy solid borders, and monospace elements designed to appeal to tech audiences.",
+              preview: (
+                <div className="w-full h-full flex flex-col justify-end p-6 bg-gradient-to-b from-transparent to-black relative overflow-hidden font-mono text-white">
+                  <div className="absolute top-4 right-4 px-2 py-0.5 rounded-full bg-lime-500/10 border border-lime-500/30 text-lime-400 font-bold uppercase tracking-widest text-[7px]">
+                    Brutalist
+                  </div>
+                  <span className="text-[8px] text-lime-400 font-bold uppercase tracking-widest mb-1">&gt; CODE_MODE_ON</span>
+                  <div className="text-base font-black uppercase tracking-tighter leading-tight mb-2">Brutalist Developer Grid</div>
+                  <div className="w-full h-[3px] bg-white mb-3" />
+                  <div className="text-[10px] text-white/50 tracking-widest">&gt; STACK_READY_FOR_PREVIEW</div>
+                </div>
+              )
+            },
+            { 
+              name: "Liquid Sheen Application", 
+              style: "Glass Sheen",
+              desc: "Dynamic glassmorphic cards with vibrant glowing colors that shift dynamically based on user interaction.",
+              preview: (
+                <div className="w-full h-full flex flex-col justify-end p-6 bg-gradient-to-b from-transparent to-white/10 backdrop-blur-md relative overflow-hidden font-sans text-white">
+                  {/* Soft neon circles */}
+                  <div className="absolute -top-8 -left-8 w-24 h-24 bg-purple-500/40 rounded-full blur-2xl pointer-events-none" />
+                  <div className="absolute -bottom-8 -right-8 w-24 h-24 bg-blue-500/40 rounded-full blur-2xl pointer-events-none" />
+                  
+                  <div className="absolute top-4 right-4 px-2 py-0.5 rounded-full bg-white/15 border border-white/25 font-mono text-[7px] uppercase tracking-widest">
+                    Glass Sheen
+                  </div>
+                  <span className="font-mono text-[8px] text-white/60 tracking-wider mb-1">MICRO-INTERACTIVE PRESETS</span>
+                  <div className="text-lg font-semibold tracking-tight leading-tight mb-2">Liquid Sheen Application</div>
+                  <div className="w-full h-[1px] bg-white/10 mb-3" />
+                  <div className="text-[10px] text-white/70 tracking-wide">Interactive glass aesthetics →</div>
+                </div>
+              )
+            }
           ].map((item, idx) => (
-            <div key={idx} className="min-w-[300px] lg:min-w-[380px] h-[460px] bg-[#141414] rounded-2xl flex-shrink-0 snap-center border border-white/5 flex flex-col justify-between p-8 hover:border-white/10 transition-all">
-              <div className="font-mono text-[9px] text-white/30 uppercase tracking-[0.2em]">EXHIBITION_PIECE_{idx+1}</div>
-              <div className="text-center font-serif italic text-2xl text-[#E8DCC8]">
-                {item.name}
+            <div key={idx} className="min-w-[280px] lg:min-w-[320px] h-[440px] bg-[#141416] rounded-2xl flex-shrink-0 snap-center border border-white/10 flex flex-col justify-between overflow-hidden hover:border-white/20 hover:translate-y-[-4px] transition-all duration-300 shadow-xl group cursor-pointer">
+              {/* Full height aesthetic preview card */}
+              <div className="w-full h-[280px] bg-[#0c0c0e] relative border-b border-white/10">
+                {item.preview}
               </div>
-              <div className="mt-auto">
-                <span className="font-mono text-[10px] text-white/40 block mb-4 uppercase tracking-widest">{item.style}</span>
-                <TransitionLink href="/showcase" className="w-full text-center border border-white/10 hover:border-white/20 hover:bg-white/5 py-4 text-[10px] font-mono uppercase tracking-widest text-[#FAF8F4] transition-all flex items-center justify-center gap-2 rounded-xl">
-                  Try live form preview →
-                </TransitionLink>
+              
+              {/* Card Meta Content */}
+              <div className="p-5 flex flex-col flex-1 justify-between bg-[#141416]">
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-mono text-[8px] text-white/40 uppercase tracking-widest">Exhibition Piece {idx + 1}</span>
+                    <span className="font-mono text-[8px] text-[#E8DCC8] tracking-widest uppercase">{item.style}</span>
+                  </div>
+                  <p className="text-[10px] text-white/50 font-sans leading-relaxed line-clamp-2">
+                    {item.desc}
+                  </p>
+                </div>
+                
+                <div className="mt-3">
+                  <TransitionLink href="/showcase" className="w-full py-2.5 text-center bg-white/5 hover:bg-white text-white hover:text-black font-mono text-[9px] uppercase tracking-widest transition-all duration-300 flex items-center justify-center gap-1.5 rounded-lg border border-white/15">
+                    Launch Preview
+                  </TransitionLink>
+                </div>
               </div>
             </div>
           ))}
         </div>
+      </div>
 
         <div className="flex justify-center">
           <TransitionLink href="/showcase" className="text-[#FAF8F4] border border-white/10 hover:border-white/20 px-8 py-5 text-xs font-mono tracking-widest uppercase hover:bg-[#FAF8F4] hover:text-[#0D0D0D] transition-all flex items-center gap-4 rounded-xl shadow-lg">
@@ -636,8 +786,10 @@ export default function Home() {
         </div>
       </section>
 
-      {/* 7. PRICING TEASER */}
-      <section className="py-24 px-6 lg:px-16 flex flex-col items-center border-t border-[#E5E5E5]">
+      {/* SECTION DIVIDER GRADIENT FLOW */}
+      <div className="h-32 bg-gradient-to-b from-[#0D0D0D] to-[#FAF8F4] w-full relative z-10" />
+
+      <section className="py-24 px-6 lg:px-16 flex flex-col items-center bg-[#FAF8F4]">
         <h2 className="font-display text-5xl lg:text-7xl tracking-wide mb-16 text-center uppercase">HONEST PLANS</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 w-full max-w-5xl items-stretch">
           <div className="p-8 border border-[#E5E5E5] bg-white flex flex-col justify-between h-[380px] rounded-2xl shadow-sm hover:shadow-md transition-shadow">

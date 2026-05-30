@@ -8,8 +8,13 @@ import clsx from "clsx";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import IntentModal from "@/components/IntentModal";
 import { usePageTransition } from "@/components/TransitionProvider";
+import { supabase } from "@/lib/supabase";
 
-function IntentModalTrigger() {
+interface IntentModalTriggerProps {
+  user: any;
+}
+
+function IntentModalTrigger({ user }: IntentModalTriggerProps) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
@@ -36,7 +41,11 @@ function IntentModalTrigger() {
   const handleComplete = (intent: string) => {
     setIsOpen(false);
     localStorage.setItem("superform_intent", intent);
-    navigateTo("/register");
+    if (user) {
+      navigateTo("/dashboard");
+    } else {
+      navigateTo("/register");
+    }
   };
 
   return (
@@ -55,6 +64,7 @@ export default function MarketingLayout({
 }) {
   const pathname = usePathname();
   const [scrolled, setScrolled] = useState(false);
+  const [user, setUser] = useState<any>(null);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -62,6 +72,22 @@ export default function MarketingLayout({
     };
     window.addEventListener("scroll", handleScroll);
     return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  useEffect(() => {
+    async function checkUser() {
+      const { data: { user } } = await supabase.auth.getUser();
+      setUser(user);
+    }
+    checkUser();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   return (
@@ -84,7 +110,7 @@ export default function MarketingLayout({
                   </linearGradient>
                 </defs>
                 <rect width="32" height="32" rx="7" fill="#0D0D0D"/>
-                <text x="50%" y="55%" dominantBaseline="middle" textAnchor="middle" fontFamily="system-ui, -apple-system, sans-serif" fontWeight="900" fontSize="12" fill="url(#headerSfGrad)" letter-spacing="-0.03em">SF</text>
+                <text x="50%" y="55%" dominantBaseline="middle" textAnchor="middle" fontFamily="system-ui, -apple-system, sans-serif" fontWeight="900" fontSize="12" fill="url(#headerSfGrad)" letterSpacing="-0.03em">SF</text>
               </svg>
               <span className="font-bold tracking-[0.04em]">Superform</span>
             </TransitionLink>
@@ -121,19 +147,31 @@ export default function MarketingLayout({
           </div>
           
           <div className="flex items-center gap-4 text-[10px] font-mono uppercase tracking-[0.18em]">
-            <TransitionLink 
-              href="/register?mode=login" 
-              className="text-[#0D0D0D] border border-ink/10 py-2.5 px-5 rounded-full hover:bg-[#0D0D0D]/5 active:scale-[0.98] transition-all cursor-pointer font-bold animate-pulse-subtle"
-            >
-              Log In
-            </TransitionLink>
-            <Link 
-              href={`${pathname}?start=true`}
-              className="flex items-center gap-1.5 bg-[#0D0D0D] text-[#FAF8F4] px-5 py-2.5 rounded-full hover:bg-[#0D0D0D]/90 active:scale-[0.98] transition-all group cursor-pointer shadow-md shadow-black/5"
-            >
-              <span>Start Building</span>
-              <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform duration-300" />
-            </Link>
+            {user ? (
+              <TransitionLink 
+                href="/dashboard" 
+                className="flex items-center gap-1.5 bg-[#0D0D0D] text-[#FAF8F4] px-5 py-2.5 rounded-full hover:bg-[#0D0D0D]/90 active:scale-[0.98] transition-all group cursor-pointer shadow-md shadow-black/5 font-bold"
+              >
+                <span>Dashboard</span>
+                <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform duration-300" />
+              </TransitionLink>
+            ) : (
+              <>
+                <TransitionLink 
+                  href="/register?mode=login" 
+                  className="text-[#0D0D0D] border border-ink/10 py-2.5 px-5 rounded-full hover:bg-[#0D0D0D]/5 active:scale-[0.98] transition-all cursor-pointer font-bold animate-pulse-subtle"
+                >
+                  Log In
+                </TransitionLink>
+                <Link 
+                  href={`${pathname}?start=true`}
+                  className="flex items-center gap-1.5 bg-[#0D0D0D] text-[#FAF8F4] px-5 py-2.5 rounded-full hover:bg-[#0D0D0D]/90 active:scale-[0.98] transition-all group cursor-pointer shadow-md shadow-black/5"
+                >
+                  <span>Start Building</span>
+                  <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform duration-300" />
+                </Link>
+              </>
+            )}
           </div>
         </header>
       </div>
@@ -158,7 +196,7 @@ export default function MarketingLayout({
 
       {/* Suspended Trigger to prevent build-time static generation bailouts */}
       <Suspense fallback={null}>
-        <IntentModalTrigger />
+        <IntentModalTrigger user={user} />
       </Suspense>
     </div>
   );
