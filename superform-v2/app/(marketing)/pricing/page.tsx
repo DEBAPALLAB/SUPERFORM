@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import clsx from "clsx";
-import { ArrowRight, Check, Minus, Sparkles } from "lucide-react";
+import { ArrowRight, Check, Minus, Sparkles, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabase";
 
 type BillingCycle = "monthly" | "annual";
 
@@ -83,16 +84,129 @@ const COMPARISON_GRID: FeatureRow[] = [
   { name: "Drop-off maps & Analytics", free: "Standard Stream", creator: "Advanced Metrics", studio: "Advanced Metrics + Export" },
   { name: "Custom Ending Page Redirects", free: false, creator: true, studio: true },
   { name: "Workspace Collaborators", free: "1 User", creator: "3 Users", studio: "Unlimited" },
-  { name: "Branding Removal Option", free: false, free: false, creator: false, studio: true },
+  { name: "Branding Removal Option", free: false, creator: false, studio: true },
   { name: "SLA Priorities Support", free: false, creator: false, studio: true }
 ];
 
 export default function PricingPage() {
   const router = useRouter();
   const [billingCycle, setBillingCycle] = useState<BillingCycle>("monthly");
+  const [user, setUser] = useState<any>(null);
+  const [loadingTier, setLoadingTier] = useState<string | null>(null);
 
-  const handleCta = () => {
-    router.push("?start=true");
+  useEffect(() => {
+    async function checkUser() {
+      const { data: { user } } = await supabase.auth.getUser();
+      setUser(user);
+    }
+    checkUser();
+  }, []);
+
+  const loadRazorpayScript = () => {
+    return new Promise((resolve) => {
+      if ((window as any).Razorpay) {
+        resolve(true);
+        return;
+      }
+      const script = document.createElement("script");
+      script.src = "https://checkout.razorpay.com/v1/checkout.js";
+      script.onload = () => resolve(true);
+      script.onerror = () => resolve(false);
+      document.body.appendChild(script);
+    });
+  };
+
+  const handleCta = async (tier: Tier) => {
+    if (tier.name === "FREE") {
+      router.push("?start=true");
+      return;
+    }
+
+    // Force sign up/in first so we can tie the subscription to a valid user account
+    if (!user) {
+      router.push(`/register?mode=signup&redirect=pricing`);
+      return;
+    }
+
+    try {
+      setLoadingTier(tier.name);
+      
+      // 1. Load checkout SDK
+      const scriptLoaded = await loadRazorpayScript();
+      if (!scriptLoaded) {
+        alert("Failed to load payment portal script. Please check your network connection.");
+        setLoadingTier(null);
+        return;
+      }
+
+      // 2. Initialize subscription on backend
+      const res = await fetch("/api/billing/razorpay/subscription", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          planType: tier.name.toLowerCase(),
+          billingCycle: billingCycle,
+          email: user.email,
+          userId: user.id
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        throw new Error(data.error || "Failed to initialize payment.");
+      }
+
+      // 3. Launch Checkout Modal
+      const options = {
+        key: data.keyId,
+        subscription_id: data.subscriptionId,
+        name: "Superform",
+        description: `${tier.name} Subscription Plan`,
+        image: "/icon.svg",
+        handler: async function (response: any) {
+          try {
+            // Success Callback -> Crypotographically verify and instantly upgrade
+            const verifyRes = await fetch("/api/billing/razorpay/verify", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_subscription_id: response.razorpay_subscription_id || data.subscriptionId,
+                razorpay_signature: response.razorpay_signature,
+                userId: user.id,
+                planType: tier.name.toLowerCase()
+              })
+            });
+
+            if (!verifyRes.ok) {
+              const verifyErr = await verifyRes.json();
+              throw new Error(verifyErr.error || "Instant payment verification failed.");
+            }
+
+            router.push("/dashboard?payment=success");
+          } catch (err: any) {
+            console.error("Instant verification error:", err);
+            // Fallback: Webhook will still process asynchronously, redirect to dashboard
+            router.push("/dashboard?payment=pending");
+          }
+        },
+        prefill: {
+          name: user.email?.split("@")[0] || "",
+          email: user.email || ""
+        },
+        theme: {
+          color: "#0D0D0D"
+        }
+      };
+
+      const paymentObject = new (window as any).Razorpay(options);
+      paymentObject.open();
+    } catch (e: any) {
+      console.error(e);
+      alert(e.message || "Payment initialization failed. Please try again.");
+    } finally {
+      setLoadingTier(null);
+    }
   };
 
   return (
@@ -186,15 +300,24 @@ export default function PricingPage() {
                 </div>
 
                 <button
-                  onClick={handleCta}
+                  onClick={() => handleCta(tier)}
+                  disabled={loadingTier !== null}
                   className={clsx(
-                    "w-full py-4 text-xs font-mono uppercase tracking-widest mt-10 transition-all rounded-xl",
+                    "w-full py-4 text-xs font-mono uppercase tracking-widest mt-10 transition-all rounded-xl flex items-center justify-center gap-2",
                     tier.popular
                       ? "bg-white text-black hover:bg-white/90 shadow-lg"
-                      : "bg-[#0D0D0D] text-[#FAF8F4] hover:bg-[#0D0D0D]/90"
+                      : "bg-[#0D0D0D] text-[#FAF8F4] hover:bg-[#0D0D0D]/90",
+                    loadingTier !== null && "opacity-50 cursor-not-allowed"
                   )}
                 >
-                  {tier.cta}
+                  {loadingTier === tier.name ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      Processing...
+                    </>
+                  ) : (
+                    tier.cta
+                  )}
                 </button>
               </div>
             );
